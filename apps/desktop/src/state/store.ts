@@ -22,6 +22,8 @@ export interface ChatState {
   open: boolean;
   /** Set for chats that do not run in the project folder itself, such as a story's worktree. */
   cwd: string | null;
+  /** Permission rules granted to this session only, for example a worker's check commands. */
+  allowedTools: string[];
   mode: ChatMode;
   resumeSessionId: string | null;
   info: ChatInfo | null;
@@ -34,6 +36,7 @@ const newChat = (): ChatState => ({
   timeline: emptyTimeline,
   open: false,
   cwd: null,
+  allowedTools: [],
   mode: 'chat',
   resumeSessionId: null,
   info: null,
@@ -65,7 +68,7 @@ interface AppState {
   setModel: (projectId: string, model: string | undefined) => Promise<void>;
   setEffort: (projectId: string, effort: Effort | undefined) => Promise<void>;
   closeChat: (chatId: string) => Promise<void>;
-  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode'>>) => void;
+  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode' | 'allowedTools'>>) => void;
   applyMode: (chatId: string, mode: ChatMode, route: { model: string | undefined; effort: Effort | undefined; permissionMode: PermissionMode }) => Promise<void>;
   setPermissionMode: (projectId: string, mode: PermissionMode) => Promise<void>;
   toggleCategory: (projectId: string, category: EventCategory) => Promise<void>;
@@ -124,6 +127,7 @@ export const useApp = create<AppState>((set, get) => {
       model: current.model,
       effort: current.effort,
       permissionMode: current.permissionMode,
+      allowedTools: current.allowedTools.length > 0 ? current.allowedTools : undefined,
     });
     patchChat(id, { open: true });
   };

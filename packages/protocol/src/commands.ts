@@ -34,6 +34,7 @@ export const methodSchemas = {
     effort: effortSchema.optional(),
     permissionMode: permissionModeSchema.optional(),
     env: z.record(z.string(), z.string()).optional(),
+    allowedTools: z.array(z.string()).optional(),
   }),
   'chat.send': chatRef.extend({
     text: z.string(),

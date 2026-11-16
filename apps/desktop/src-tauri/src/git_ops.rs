@@ -263,6 +263,21 @@ pub fn commit_folder(project: &Path, folder: &str, message: &str) -> AppResult<b
     Ok(true)
 }
 
+/// Commits everything a worker left in its worktree. Returns false when there was nothing to commit.
+pub fn commit_worktree(project: &Path, id: &str, message: &str) -> AppResult<bool> {
+    check_story_id(id)?;
+    let worktree = worktree_path(project, id);
+    if !worktree.is_dir() {
+        return Err(invalid(format!("there is no worktree for {id}")));
+    }
+    git(&worktree, &["add", "-A"])?;
+    if git(&worktree, &["diff", "--cached", "--name-only"])?.trim().is_empty() {
+        return Ok(false);
+    }
+    git(&worktree, &["commit", "-q", "-m", message])?;
+    Ok(true)
+}
+
 pub fn push(project: &Path) -> AppResult<String> {
     let branch = base_branch(project)?;
     git(project, &["push", "origin", &branch])?;
@@ -355,7 +370,10 @@ mod tests {
         assert!(diff.patch.contains("+two") && diff.patch.contains("+new"));
 
         assert!(merge_story(&dir, "S-001").unwrap_err().to_string().contains("uncommitted"));
-        git(&path, &["commit", "-q", "-am", "S-001: extend a"]).unwrap();
+        fs::write(path.join("c.txt"), "untracked\n").unwrap();
+        assert!(commit_worktree(&dir, "S-001", "S-001: build").unwrap());
+        assert!(!commit_worktree(&dir, "S-001", "S-001: build").unwrap(), "nothing left to commit");
+        assert!(git(&path, &["status", "--porcelain"]).unwrap().trim().is_empty());
         merge_story(&dir, "S-001").unwrap();
         assert_eq!(fs::read_to_string(dir.join("b.txt")).unwrap(), "new\n");
         assert_eq!(fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"), "one\ntwo\n");

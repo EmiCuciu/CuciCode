@@ -268,3 +268,16 @@ describe('stalled stages and modes', () => {
     expect(modeRoute(defaultConfig(), 'plan')).toEqual({ model: 'opus', effort: 'high', permissionMode: 'plan' });
   });
 });
+
+describe('worker permissions', () => {
+  it('allows the check commands and basic git in both shells, and nothing broader', async () => {
+    const { workerAllowedTools } = await import('./pipeline.ts');
+    const rules = workerAllowedTools(['npm test', ' ']);
+    expect(rules).toContain('Bash(npm test)');
+    expect(rules).toContain('Bash(npm test:*)');
+    expect(rules).toContain('PowerShell(git commit:*)');
+    expect(rules).not.toContain('Bash');
+    expect(rules.every((rule) => /^(Bash|PowerShell)\(.+\)$/.test(rule))).toBe(true);
+    expect(rules.some((rule) => rule.includes('git push') || rule.includes('rm '))).toBe(false);
+  });
+});

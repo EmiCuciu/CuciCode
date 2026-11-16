@@ -121,10 +121,12 @@ export const workflowApi = {
   worktrees: (projectPath: string): Promise<Worktree[]> => invoke('worktree_list', { projectPath }),
   addWorktree: (projectPath: string, storyId: string): Promise<Worktree> => invoke('worktree_add', { projectPath, storyId }),
   removeWorktree: (projectPath: string, storyId: string, deleteBranch: boolean): Promise<void> => invoke('worktree_remove', { projectPath, storyId, deleteBranch }),
+  commitWorktree: (projectPath: string, storyId: string, message: string): Promise<boolean> => invoke('worktree_commit', { projectPath, storyId, message }),
   diff: (projectPath: string, storyId: string): Promise<StoryDiff> => invoke('story_diff', { projectPath, storyId }),
   finish: (projectPath: string, storyId: string, push: boolean): Promise<FinishedStory> => invoke('story_finish', { projectPath, storyId, push }),
   checkCommands: (projectPath: string): Promise<string[]> => invoke('checks_commands', { projectPath }),
   runChecks: (projectPath: string, storyId: string | null): Promise<CheckRun> => invoke('checks_run', { projectPath, storyId }),
+  commitDocs: (projectPath: string, message: string): Promise<boolean> => invoke('pipeline_commit_docs', { projectPath, message }),
   pluginSource: (): Promise<string> => invoke('plugin_source'),
 };
 

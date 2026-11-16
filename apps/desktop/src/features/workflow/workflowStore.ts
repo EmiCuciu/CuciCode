@@ -3,7 +3,7 @@ import type { Effort, TimelineEvent } from '@cucicode/protocol';
 import { workflowApi, type CheckRun, type Story, type Worktree } from '../../bridge/tauri.ts';
 import { chatListeners, useApp } from '../../state/store.ts';
 import { resolveConfig, sessionRoute, type WorkflowConfig } from './config.ts';
-import { newRun, pendingItems, step, type Effect, type FeatureRun, type PipelineEvent } from './pipeline.ts';
+import { isUsageLimitText, newRun, pendingItems, step, workerAllowedTools, type Effect, type FeatureRun, type PipelineEvent } from './pipeline.ts';
 
 const WORKER_SEPARATOR = '::';
 
@@ -96,10 +96,12 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
 
   const prepareWorker = async (projectId: string, storyId: string): Promise<string> => {
     const workflow = current(projectId);
-    const worktree = await workflowApi.addWorktree(projectPath(projectId), storyId);
+    const path = projectPath(projectId);
+    await workflowApi.commitDocs(path, `${workflow?.run?.feature ?? 'feature'}: plan and stories`);
+    const worktree = await workflowApi.addWorktree(path, storyId);
     const chatId = workerChatId(projectId, storyId);
     const route = workflow ? sessionRoute(workflow.config, 'worker') : { model: undefined, effort: undefined };
-    useApp.getState().configureChat(chatId, { cwd: worktree.path, model: route.model, effort: route.effort as Effort | undefined, permissionMode: 'acceptEdits' });
+    useApp.getState().configureChat(chatId, { cwd: worktree.path, model: route.model, effort: route.effort as Effort | undefined, permissionMode: 'acceptEdits', allowedTools: workerAllowedTools(workflow?.checkCommands ?? []) });
     return chatId;
   };
 
@@ -259,8 +261,23 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
   };
 });
 
+const LIMIT_MESSAGE = 'the usage limit was reached; run it again after the limit resets';
+const limitedChats = new Set<string>();
+
 function onChatEvent(chatId: string, event: TimelineEvent): void {
+  if (event.kind === 'rate_limit' && event.status === 'rejected') {
+    limitedChats.add(chatId);
+    return;
+  }
   if (event.kind !== 'result') {
+    return;
+  }
+  const hitLimit = limitedChats.delete(chatId) || isUsageLimitText(lastAssistantText(chatId));
+  if (hitLimit) {
+    const { projectId, storyId } = parseChatId(chatId);
+    if (useWorkflow.getState().projects[projectId]?.run) {
+      void useWorkflow.getState().dispatch(projectId, storyId === null ? { type: 'main_turn_failed', error: LIMIT_MESSAGE } : { type: 'worker_failed', storyId, error: LIMIT_MESSAGE });
+    }
     return;
   }
   const { projectId, storyId } = parseChatId(chatId);
@@ -275,7 +292,11 @@ function onChatEvent(chatId: string, event: TimelineEvent): void {
   } else if (event.isError) {
     void dispatch(projectId, { type: 'worker_failed', storyId, error: `the worker turn stopped: ${error}` });
   } else {
-    void dispatch(projectId, { type: 'worker_turn_done', storyId, text: lastAssistantText(chatId) });
+    const text = lastAssistantText(chatId);
+    const stage = workflow.run.stories[storyId]?.stage ?? 'work';
+    const path = useApp.getState().projects.find((project) => project.id === projectId)?.path;
+    const commit = path ? workflowApi.commitWorktree(path, storyId, `${storyId}: ${stage}`).catch(() => false) : Promise.resolve(false);
+    void commit.then(() => dispatch(projectId, { type: 'worker_turn_done', storyId, text }));
   }
 }
 

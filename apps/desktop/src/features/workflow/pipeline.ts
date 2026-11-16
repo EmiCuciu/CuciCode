@@ -59,6 +59,25 @@ export interface StepResult {
 
 const ACTIVE: ReadonlySet<StoryStage> = new Set(['building', 'checks', 'fixing', 'review', 'merging']);
 
+const WORKER_GIT_COMMANDS = ['git status', 'git diff', 'git log', 'git show', 'git add', 'git commit'];
+
+/**
+ * Permission rules for a worker session: the project's check commands and the git commands a
+ * worker needs. Everything else a worker wants to run in a shell still asks the user.
+ */
+export function workerAllowedTools(checkCommands: string[]): string[] {
+  const commands = [...checkCommands.map((command) => command.trim()).filter((command) => command.length > 0), ...WORKER_GIT_COMMANDS];
+  return ['Bash', 'PowerShell'].flatMap((tool) => commands.flatMap((command) => [`${tool}(${command})`, `${tool}(${command}:*)`]));
+}
+
+/**
+ * A turn cut short by the subscription limit still ends with a "success" result whose only
+ * text is Claude Code's limit message, so it must not be mistaken for finished work.
+ */
+export function isUsageLimitText(text: string): boolean {
+  return /^\s*you(?:'|’)ve hit your\b[^\n]*\blimit\b/i.test(text);
+}
+
 export function featureSlug(name: string): string {
   return name
     .toLowerCase()

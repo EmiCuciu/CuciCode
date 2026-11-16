@@ -15,6 +15,6 @@ Worker instructions:
 3. Change only files matched by the story's `owned_files`. If another file is needed, stop and report it.
 4. Run the checks named in the plan. Fix what fails without weakening tests.
 5. Verify each acceptance criterion.
-6. Commit with a message starting with the story id, then set `status: review` and commit that.
+6. Set `status: review` in the story's frontmatter, then commit everything with a message starting with the story id. If committing is not permitted in this session, leave the changes uncommitted and say so; that is not a failure.
 
 Report what changed, the result of each check with the command used, and how each acceptance criterion was verified. Do not merge anything.

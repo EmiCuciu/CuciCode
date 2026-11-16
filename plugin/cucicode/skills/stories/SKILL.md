@@ -8,4 +8,6 @@ Write the stories for the plan `Plans/$ARGUMENTS.md`.
 
 Use the `cucicode:story-writer` agent. It writes one file per story in `Stories/` with frontmatter (id, feature, title, status, acceptance_criteria, owned_files, depends_on, worker, branch, review).
 
+Every new story keeps `status: todo`; do not invent other status values.
+
 When it finishes, show me a table of the stories (id, title, owned files, depends on) and point out any two stories whose owned files overlap. Do not start building: the stories need my approval first.

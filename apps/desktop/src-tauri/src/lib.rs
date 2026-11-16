@@ -147,6 +147,11 @@ async fn worktree_remove(project_path: PathBuf, story_id: String, delete_branch:
 }
 
 #[tauri::command]
+async fn worktree_commit(project_path: PathBuf, story_id: String, message: String) -> AppResult<bool> {
+    blocking(move || git_ops::commit_worktree(&project_path, &story_id, &message)).await
+}
+
+#[tauri::command]
 async fn story_diff(project_path: PathBuf, story_id: String) -> AppResult<git_ops::StoryDiff> {
     blocking(move || git_ops::story_diff(&project_path, &story_id)).await
 }
@@ -201,6 +206,22 @@ async fn story_finish(project_path: PathBuf, story_id: String, push: bool) -> Ap
                 }
             };
         Ok(FinishedStory { commit, archived, pushed, warnings })
+    })
+    .await
+}
+
+/// Commits the plan and story files so that worktrees, which start from the last commit, contain them.
+#[tauri::command]
+async fn pipeline_commit_docs(project_path: PathBuf, message: String) -> AppResult<bool> {
+    blocking(move || {
+        let stories = stories_target(&project_path)?.folder_name();
+        let mut committed = false;
+        for folder in ["Plans", stories.as_str()] {
+            if project_path.join(folder).is_dir() {
+                committed |= git_ops::commit_folder(&project_path, folder, &message)?;
+            }
+        }
+        Ok(committed)
     })
     .await
 }
@@ -393,9 +414,11 @@ pub fn run() {
             worktree_list,
             worktree_add,
             worktree_remove,
+            worktree_commit,
             story_diff,
             story_merge,
             story_finish,
+            pipeline_commit_docs,
             plugin_source,
             checks_commands,
             checks_run,
