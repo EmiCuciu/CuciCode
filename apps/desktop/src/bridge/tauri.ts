@@ -8,7 +8,7 @@ import type {
   SessionSummary,
   TimelineEvent,
 } from '@cucicode/protocol';
-import type { ItemKind, ItemScope, Project, ProjectUiSettings, ResolvedSetting, ToolkitScan, ValidationProblem } from './types.ts';
+import type { ItemKind, ItemScope, Project, ProjectUiSettings, ResolvedSetting, ScopeFile, SettingsScope, ToolkitScan, ValidationProblem } from './types.ts';
 
 export const SIDECAR_EVENT = 'sidecar://event';
 
@@ -84,7 +84,10 @@ export const voiceApi = {
 };
 
 export const settingsApi = {
-  resolveClaude: (projectPath: string): Promise<ResolvedSetting[]> => invoke('claude_settings_resolve', { projectPath }),
+  resolveClaude: (projectPath: string | null): Promise<ResolvedSetting[]> => invoke('claude_settings_resolve', { projectPath }),
+  files: (projectPath: string | null): Promise<ScopeFile[]> => invoke('claude_settings_files', { projectPath }),
+  setValue: (scope: SettingsScope, projectPath: string | null, key: string, value: unknown): Promise<void> =>
+    invoke('claude_settings_set', { scope, projectPath, key, value: value ?? null }),
   getProjectUi: (projectPath: string): Promise<ProjectUiSettings> => invoke('cucicode_project_ui_get', { projectPath }),
   setProjectUi: (projectPath: string, settings: ProjectUiSettings): Promise<void> =>
     invoke('cucicode_project_ui_set', { projectPath, settings }),

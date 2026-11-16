@@ -16,7 +16,7 @@ use voice::{Voice, VoiceStatus};
 
 use error::{AppError, AppResult};
 use projects::Project;
-use settings::claude::ResolvedSetting;
+use settings::claude::{ResolvedSetting, Scope, ScopeFile, SettingsLocations};
 use settings::cucicode::ProjectUiSettings;
 use sidecar::Sidecar;
 use toolkit::model::{ItemKind, ItemScope};
@@ -52,8 +52,18 @@ async fn projects_remove(id: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-async fn claude_settings_resolve(project_path: PathBuf) -> AppResult<Vec<ResolvedSetting>> {
-    blocking(move || settings::claude::resolve_for_project(&project_path)).await
+async fn claude_settings_resolve(project_path: Option<PathBuf>) -> AppResult<Vec<ResolvedSetting>> {
+    blocking(move || settings::claude::resolve_for_project(project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn claude_settings_files(project_path: Option<PathBuf>) -> AppResult<Vec<ScopeFile>> {
+    blocking(move || settings::claude::scope_files(&SettingsLocations::system()?, project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn claude_settings_set(scope: Scope, project_path: Option<PathBuf>, key: String, value: Option<Value>) -> AppResult<()> {
+    blocking(move || settings::claude::set_value(&SettingsLocations::system()?, scope, project_path.as_deref(), &key, value)).await
 }
 
 #[tauri::command]
@@ -139,6 +149,8 @@ pub fn run() {
             projects_add,
             projects_remove,
             claude_settings_resolve,
+            claude_settings_files,
+            claude_settings_set,
             cucicode_project_ui_get,
             cucicode_project_ui_set,
             toolkit_scan,

@@ -20,7 +20,15 @@ export interface ResolvedSetting {
   mergedFrom: SettingsScope[];
 }
 
-export type ItemKind = 'agent' | 'skill' | 'command' | 'hook' | 'mcp' | 'outputStyle' | 'rule';
+export interface ScopeFile {
+  scope: SettingsScope;
+  path: string;
+  exists: boolean;
+  writable: boolean;
+  value: Record<string, unknown>;
+}
+
+export type ItemKind ='agent' | 'skill' | 'command' | 'hook' | 'mcp' | 'outputStyle' | 'rule';
 export type ItemScope = 'managed' | 'user' | 'project' | 'local' | 'plugin';
 
 export interface ItemConflict {

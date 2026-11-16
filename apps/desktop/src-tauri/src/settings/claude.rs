@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::error::AppResult;
-use crate::jsonfile::read_optional;
+use crate::error::{AppError, AppResult};
+use crate::jsonfile::{read_optional, write_atomic};
 use crate::paths::{claude_config_dir, managed_settings_dir};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Scope {
     Managed,
@@ -216,8 +216,68 @@ pub fn load_sources(locations: &SettingsLocations, project_path: Option<&Path>) 
     Ok(candidates.into_iter().flatten().collect())
 }
 
-pub fn resolve_for_project(project_path: &Path) -> AppResult<Vec<ResolvedSetting>> {
-    Ok(resolve(&load_sources(&SettingsLocations::system()?, Some(project_path))?))
+/// One settings file as the editor sees it, whether or not it exists yet.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopeFile {
+    pub scope: Scope,
+    pub path: String,
+    pub exists: bool,
+    pub writable: bool,
+    pub value: Value,
+}
+
+fn writable_file(locations: &SettingsLocations, scope: Scope, project_path: Option<&Path>) -> AppResult<PathBuf> {
+    let project = || project_path.map(|project| project.join(".claude")).ok_or_else(|| AppError::Invalid("select a project to edit project settings".into()));
+    match scope {
+        Scope::User => Ok(locations.config_dir.join("settings.json")),
+        Scope::Project => Ok(project()?.join("settings.json")),
+        Scope::Local => Ok(project()?.join("settings.local.json")),
+        Scope::Managed => Err(AppError::Invalid("managed settings are set by your organisation and cannot be edited here".into())),
+    }
+}
+
+/// Lists the managed source (if any) and every file the user can write to.
+pub fn scope_files(locations: &SettingsLocations, project_path: Option<&Path>) -> AppResult<Vec<ScopeFile>> {
+    let mut files: Vec<ScopeFile> = managed_source(locations)?
+        .into_iter()
+        .map(|source| ScopeFile { scope: Scope::Managed, path: source.path, exists: true, writable: false, value: source.value })
+        .collect();
+    let scopes: &[Scope] = if project_path.is_some() { &[Scope::Local, Scope::Project, Scope::User] } else { &[Scope::User] };
+    for scope in scopes {
+        let path = writable_file(locations, *scope, project_path)?;
+        let value = read_optional(&path)?;
+        files.push(ScopeFile { scope: *scope, path: path.display().to_string(), exists: value.is_some(), writable: true, value: value.unwrap_or_else(|| Value::Object(Map::new())) });
+    }
+    Ok(files)
+}
+
+/// Sets or removes one top-level key in the settings file of a scope, leaving every other key untouched.
+pub fn set_value(locations: &SettingsLocations, scope: Scope, project_path: Option<&Path>, key: &str, value: Option<Value>) -> AppResult<()> {
+    if key.is_empty() || key == "$schema" {
+        return Err(AppError::Invalid("a setting key is required".into()));
+    }
+    let path = writable_file(locations, scope, project_path)?;
+    let mut document = match read_optional(&path)? {
+        None => Map::new(),
+        Some(Value::Object(object)) => object,
+        Some(_) => return Err(AppError::Invalid(format!("{} does not contain a JSON object", path.display()))),
+    };
+    match value {
+        Some(value) => {
+            document.insert(key.to_owned(), value);
+        }
+        None => {
+            if document.shift_remove(key).is_none() {
+                return Ok(());
+            }
+        }
+    }
+    write_atomic(&path, &Value::Object(document))
+}
+
+pub fn resolve_for_project(project_path: Option<&Path>) -> AppResult<Vec<ResolvedSetting>> {
+    Ok(resolve(&load_sources(&SettingsLocations::system()?, project_path)?))
 }
 
 #[cfg(test)]
@@ -283,6 +343,64 @@ mod tests {
         let resolved = resolve(&[source(Scope::User, json!({ "$schema": "x", "hooks": {} }))]);
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].key, "hooks");
+    }
+
+    fn temp_locations(name: &str) -> (PathBuf, SettingsLocations, PathBuf) {
+        let base = std::env::temp_dir().join(format!("cucicode-set-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let locations = SettingsLocations { config_dir: base.join("home/.claude"), managed_dir: base.join("managed"), read_os_policy: false };
+        let project = base.join("project");
+        fs::create_dir_all(&project).unwrap();
+        (base, locations, project)
+    }
+
+    #[test]
+    fn set_value_creates_the_file_and_keeps_other_keys_in_order() {
+        let (base, locations, project) = temp_locations("create");
+        let file = project.join(".claude/settings.json");
+        set_value(&locations, Scope::Project, Some(&project), "model", Some(json!("opus"))).unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), "{\n  \"model\": \"opus\"\n}\n");
+
+        fs::write(&file, r#"{"zeta": 1, "model": "opus", "alpha": {"keep": true}}"#).unwrap();
+        set_value(&locations, Scope::Project, Some(&project), "model", Some(json!("sonnet"))).unwrap();
+        let text = fs::read_to_string(&file).unwrap();
+        let positions: Vec<usize> = ["zeta", "model", "alpha"].iter().map(|key| text.find(key).unwrap()).collect();
+        assert!(positions[0] < positions[1] && positions[1] < positions[2], "key order must be preserved: {text}");
+        assert!(text.contains("\"sonnet\"") && text.contains("\"keep\": true"));
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn set_value_with_none_removes_only_that_key() {
+        let (base, locations, project) = temp_locations("remove");
+        let file = project.join(".claude/settings.local.json");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, r#"{"model":"opus","outputStyle":"Concise"}"#).unwrap();
+        set_value(&locations, Scope::Local, Some(&project), "model", None).unwrap();
+        assert_eq!(read_optional(&file).unwrap().unwrap(), json!({ "outputStyle": "Concise" }));
+        set_value(&locations, Scope::Local, Some(&project), "absent", None).unwrap();
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn managed_scope_and_missing_project_are_refused() {
+        let (base, locations, project) = temp_locations("refuse");
+        assert!(set_value(&locations, Scope::Managed, Some(&project), "model", Some(json!("x"))).is_err());
+        assert!(set_value(&locations, Scope::Project, None, "model", Some(json!("x"))).is_err());
+        assert!(set_value(&locations, Scope::User, None, "", Some(json!("x"))).is_err());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn scope_files_lists_writable_files_even_when_missing() {
+        let (base, locations, project) = temp_locations("files");
+        set_value(&locations, Scope::User, None, "model", Some(json!("haiku"))).unwrap();
+        let files = scope_files(&locations, Some(&project)).unwrap();
+        let summary: Vec<(Scope, bool, bool)> = files.iter().map(|file| (file.scope, file.exists, file.writable)).collect();
+        assert_eq!(summary, vec![(Scope::Local, false, true), (Scope::Project, false, true), (Scope::User, true, true)]);
+        assert_eq!(files[2].value, json!({ "model": "haiku" }));
+        assert_eq!(scope_files(&locations, None).unwrap().len(), 1);
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]
