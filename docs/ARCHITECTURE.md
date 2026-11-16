@@ -107,5 +107,26 @@ Claude Code settings are read from and written to Claude Code's own files; CuciC
 |---|---|
 | Protocol package | Done |
 | Sidecar | Done, unit-tested, smoke-tested against the real SDK |
+| UI | Shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter, read-only effective settings. Type-checks and builds; timeline state is unit-tested. Not yet run inside the desktop shell |
 | Rust core | Not started (waiting for the MSVC C++ toolchain) |
-| UI | Not started |
+
+## UI internals
+
+| Path | Responsibility |
+|---|---|
+| `bridge/tauri.ts` | The only file that talks to Rust: typed wrappers over Tauri commands and the sidecar event stream |
+| `state/timeline.ts` | Pure reducer from timeline events to what the chat shows (streaming draft, merged hook and subagent rows, tool results keyed by call, collapsed repeats, nesting by `parentToolUseId`) |
+| `state/store.ts` | Zustand store: projects, one chat per project, sessions, per-project filter preference |
+| `features/*` | Components grouped by screen area: `layout`, `projects`, `chat`, `inspector`, `settings` |
+
+A session is opened lazily: viewing an old session only loads its history; the Claude Code process starts (with `resume`) on the first message sent.
+
+## Commands the Rust core must provide
+
+| Command | Purpose |
+|---|---|
+| `sidecar_request(method, params)` | Forward a request to the sidecar and return its response |
+| event `sidecar://event` | `{chatId, event}` for every timeline event |
+| `projects_list`, `projects_add(path)`, `projects_remove(id)` | Project registry with git branch, clean/dirty, remote host |
+| `claude_settings_resolve(projectPath)` | Effective Claude Code settings, each with winning scope and file path |
+| `cucicode_project_ui_get/set(projectPath)` | Per-project UI preferences in `.claude/cucicode/settings.local.json` |

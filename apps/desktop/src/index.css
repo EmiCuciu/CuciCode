@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+  --color-bg: var(--cc-bg);
+  --color-panel: var(--cc-panel);
+  --color-raised: var(--cc-raised);
+  --color-line: var(--cc-line);
+  --color-fg: var(--cc-fg);
+  --color-muted: var(--cc-muted);
+  --color-accent: var(--cc-accent);
+  --color-ok: var(--cc-ok);
+  --color-warn: var(--cc-warn);
+  --color-bad: var(--cc-bad);
+}
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --cc-bg: #0e1116;
+  --cc-panel: #141922;
+  --cc-raised: #1b2230;
+  --cc-line: #262f3f;
+  --cc-fg: #d7dde8;
+  --cc-muted: #7f8a9c;
+  --cc-accent: #6ea8fe;
+  --cc-ok: #5fc48b;
+  --cc-warn: #e0b057;
+  --cc-bad: #ef6b73;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --cc-bg: #f6f7f9;
+  --cc-panel: #ffffff;
+  --cc-raised: #eef1f5;
+  --cc-line: #d9dee6;
+  --cc-fg: #1c222b;
+  --cc-muted: #5f6b7c;
+  --cc-accent: #2563c9;
+  --cc-ok: #1f8a54;
+  --cc-warn: #9a6b0c;
+  --cc-bad: #c6333c;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--cc-bg);
+  color: var(--cc-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--cc-line);
+  border-radius: 5px;
+}
