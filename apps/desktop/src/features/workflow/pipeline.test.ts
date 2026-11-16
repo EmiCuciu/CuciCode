@@ -281,3 +281,39 @@ describe('worker permissions', () => {
     expect(rules.some((rule) => rule.includes('git push') || rule.includes('rm '))).toBe(false);
   });
 });
+
+describe('onboarding an existing project', () => {
+  it('runs map, baseline, scope, audit and backlog, stopping for approval after each', async () => {
+    const { ONBOARD_STAGES } = await import('./pipeline.ts');
+    const cfg = config();
+    let result = step(newRun(), { type: 'start_onboard' }, cfg);
+    expect(result.run).toMatchObject({ kind: 'onboard', stage: 'map', status: 'working' });
+    expect(result.effects).toEqual([{ type: 'send_main', prompt: '/cucicode:onboard map' }]);
+    for (const stage of ONBOARD_STAGES.slice(0, -1)) {
+      expect(result.run.stage).toBe(stage);
+      result = step(result.run, { type: 'main_turn_done' }, cfg);
+      expect(result.run).toMatchObject({ status: 'waiting', awaiting: stage });
+      expect(pendingItems(result.run)[0]?.text).toContain(stage);
+      result = step(result.run, { type: 'approve' }, cfg);
+    }
+    expect(result.run).toMatchObject({ stage: 'done', status: 'idle', awaiting: null });
+  });
+
+  it('sends a rejected stage back with the reason and can re-run a stage that stopped', () => {
+    const cfg = config();
+    const mapped = play([{ type: 'start_onboard' }, { type: 'main_turn_done' }], cfg).run;
+    const rejected = step(mapped, { type: 'reject', reason: 'the API folder is missing' }, cfg);
+    expect(rejected.run).toMatchObject({ stage: 'map', status: 'working', awaiting: null });
+    expect((rejected.effects[0] as { prompt: string }).prompt).toContain('Plans/onboarding/map.md');
+    expect((rejected.effects[0] as { prompt: string }).prompt).toContain('the API folder is missing');
+    const stopped = step(step(newRun(), { type: 'start_onboard' }, cfg).run, { type: 'main_turn_failed', error: 'interrupted' }, cfg);
+    expect(types(step(stopped.run, { type: 'retry_stage' }, cfg).effects)).toEqual(['send_main']);
+  });
+
+  it('does not treat onboarding turns as feature stages', () => {
+    const cfg = config();
+    const run = step(newRun(), { type: 'start_onboard' }, cfg).run;
+    expect(step(run, { type: 'advance' }, cfg).effects).toEqual([]);
+    expect(step(run, TWO_STORIES, cfg).effects).toEqual([]);
+  });
+});

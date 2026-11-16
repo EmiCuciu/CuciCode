@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FEATURE_STAGES, type FeatureRun, type StoryRun, type StoryStage } from './pipeline.ts';
+import { FEATURE_STAGES, ONBOARD_INFO, ONBOARD_STAGES, type FeatureRun, type OnboardStage, type StoryRun, type StoryStage } from './pipeline.ts';
 import { useWorkflow } from './workflowStore.ts';
 
 const STAGE_TONE: Record<StoryStage, string> = {
@@ -35,6 +35,12 @@ function StartForm({ projectId }: { projectId: string }) {
       <button type="button" disabled={!ready} className={primary} onClick={() => void dispatch(projectId, { type: 'start', feature, idea, skipBrainstorm: skip })}>
         Start feature
       </button>
+      <div className="mt-2 border-t border-line/60 pt-2 text-[11px] text-muted">
+        Existing codebase that was not started with CuciCode? Map it first, one reviewed stage at a time.
+        <button type="button" className={`${button} mt-1 block text-fg`} onClick={() => void dispatch(projectId, { type: 'start_onboard' })}>
+          Onboard this project
+        </button>
+      </div>
     </div>
   );
 }
@@ -113,7 +119,9 @@ function RunView({ projectId, run }: { projectId: string; run: FeatureRun }) {
   const stories = useWorkflow((state) => state.projects[projectId]?.stories);
   const [confirmClose, setConfirmClose] = useState(false);
   const titleOf = (id: string): string => stories?.find((story) => story.id === id)?.title ?? '';
-  const stageIndex = FEATURE_STAGES.indexOf(run.stage);
+  const stages: readonly string[] = run.kind === 'onboard' ? ONBOARD_STAGES : FEATURE_STAGES;
+  const stageIndex = stages.indexOf(run.stage);
+  const onboardStage = run.awaiting !== null && run.awaiting !== 'plan' && run.awaiting !== 'stories' ? (run.awaiting as OnboardStage) : null;
   const stalled = run.status === 'waiting' && run.awaiting === null && run.stage !== 'build';
 
   return (
@@ -123,7 +131,7 @@ function RunView({ projectId, run }: { projectId: string; run: FeatureRun }) {
         <span className={`font-mono text-[11px] ${run.status === 'working' ? 'text-accent' : run.status === 'waiting' ? 'text-warn' : 'text-muted'}`}>{run.status}</span>
       </div>
       <div className="flex gap-1 font-mono text-[11px]">
-        {FEATURE_STAGES.map((stage, index) => (
+        {stages.map((stage, index) => (
           <span key={stage} className={`flex-1 border-t-2 pt-1 text-center ${index < stageIndex ? 'border-ok text-muted' : index === stageIndex ? 'border-accent text-fg' : 'border-line text-muted'}`}>
             {stage}
           </span>
@@ -141,7 +149,12 @@ function RunView({ projectId, run }: { projectId: string; run: FeatureRun }) {
       {run.awaiting !== null && (
         <div className="rounded border border-warn/60 p-2">
           <div className="mb-1">
-            {run.awaiting === 'plan' ? (
+            {onboardStage ? (
+              <>
+                <span className="text-muted">{ONBOARD_INFO[onboardStage]}.</span> Read{' '}
+                <span className="font-mono">{onboardStage === 'backlog' ? 'the new stories in the Stories folder' : `Plans/onboarding/${onboardStage}.md`}</span>, then decide.
+              </>
+            ) : run.awaiting === 'plan' ? (
               <>
                 Read <span className="font-mono">Plans/{run.feature}.md</span>, then decide.
               </>
@@ -151,7 +164,7 @@ function RunView({ projectId, run }: { projectId: string; run: FeatureRun }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={primary} onClick={() => void dispatch(projectId, { type: 'approve' })}>
-              {run.awaiting === 'plan' ? 'Approve plan' : 'Approve stories and build'}
+              {onboardStage ? (onboardStage === 'backlog' ? 'Approve and finish' : 'Approve and continue') : run.awaiting === 'plan' ? 'Approve plan' : 'Approve stories and build'}
             </button>
             <RejectBox label="Request changes" onReject={(reason) => void dispatch(projectId, { type: 'reject', reason })} />
           </div>
@@ -194,7 +207,7 @@ function RunView({ projectId, run }: { projectId: string; run: FeatureRun }) {
         </div>
       ) : (
         <button type="button" className="self-start text-[11px] text-muted hover:text-fg" onClick={() => setConfirmClose(true)}>
-          {run.stage === 'done' ? 'Close and start another feature' : 'Abandon this run'}
+          {run.stage === 'done' ? (run.kind === 'onboard' ? 'Close; stories from the backlog can now be built as a feature' : 'Close and start another feature') : 'Abandon this run'}
         </button>
       )}
     </div>

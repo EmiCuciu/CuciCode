@@ -1,7 +1,17 @@
 import { ROLE_INFO, type Role, type WorkflowConfig } from './config.ts';
 
 export const FEATURE_STAGES = ['brainstorm', 'plan', 'stories', 'build', 'done'] as const;
-export type FeatureStage = (typeof FEATURE_STAGES)[number];
+export const ONBOARD_STAGES = ['map', 'baseline', 'scope', 'audit', 'backlog', 'done'] as const;
+export type OnboardStage = Exclude<(typeof ONBOARD_STAGES)[number], 'done'>;
+export type FeatureStage = (typeof FEATURE_STAGES)[number] | OnboardStage;
+
+export const ONBOARD_INFO: Record<OnboardStage, string> = {
+  map: 'Describe the project: purpose, stack, structure, how to run and test it',
+  baseline: 'Run the tests and build, and record what passes and fails today',
+  scope: 'Agree which parts agents may work on and which are off limits',
+  audit: 'List problems worth fixing inside the agreed scope, with evidence',
+  backlog: 'Turn the audit items you approve into stories',
+};
 
 export type StoryStage = 'queued' | 'building' | 'checks' | 'fixing' | 'review' | 'awaiting_approval' | 'merging' | 'merged' | 'failed';
 
@@ -17,12 +27,14 @@ export interface StoryRun {
 }
 
 export interface FeatureRun {
+  /** `feature` builds something new; `onboard` brings an existing project into the workflow. */
+  kind: 'feature' | 'onboard';
   feature: string;
   idea: string;
   stage: FeatureStage;
   /** `working`: an agent turn is in progress. `waiting`: the user decides what happens next. */
   status: 'working' | 'waiting' | 'idle';
-  awaiting: 'plan' | 'stories' | null;
+  awaiting: 'plan' | 'stories' | OnboardStage | null;
   stories: Record<string, StoryRun>;
   log: string[];
 }
@@ -38,6 +50,7 @@ export type Effect =
 
 export type PipelineEvent =
   | { type: 'start'; feature: string; idea: string; skipBrainstorm: boolean }
+  | { type: 'start_onboard' }
   | { type: 'advance' }
   | { type: 'main_turn_done' }
   | { type: 'main_turn_failed'; error: string }
@@ -160,7 +173,20 @@ function enterStage(run: FeatureRun, stage: FeatureStage, config: WorkflowConfig
     }
     case 'done':
       return { run: { ...base, status: 'idle' }, effects: [] };
+    default:
+      return {
+        run: log(base, `Onboarding: ${stage} started.`),
+        effects: [{ type: 'send_main', prompt: withAgent(`/cucicode:onboard ${stage}`, config, stage === 'backlog' ? ['storyWriter'] : ['explorer']) }],
+      };
   }
+}
+
+function isOnboardStage(stage: FeatureStage): stage is OnboardStage {
+  return stage !== 'done' && (ONBOARD_STAGES as readonly string[]).includes(stage);
+}
+
+function nextOnboardStage(stage: OnboardStage): (typeof ONBOARD_STAGES)[number] {
+  return ONBOARD_STAGES[ONBOARD_STAGES.indexOf(stage) + 1] ?? 'done';
 }
 
 function sendBack(run: FeatureRun, storyId: string, config: WorkflowConfig, reason: string, what: string): StepResult {
@@ -194,7 +220,7 @@ function startReview(run: FeatureRun, storyId: string, config: WorkflowConfig): 
 }
 
 export function newRun(): FeatureRun {
-  return { feature: '', idea: '', stage: 'brainstorm', status: 'idle', awaiting: null, stories: {}, log: [] };
+  return { kind: 'feature', feature: '', idea: '', stage: 'brainstorm', status: 'idle', awaiting: null, stories: {}, log: [] };
 }
 
 /** The whole pipeline as one pure function: the current run and an event in, the next run and the work to do out. */
@@ -205,6 +231,8 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       const fresh: FeatureRun = { ...newRun(), feature: featureSlug(event.feature), idea: event.idea.trim() };
       return enterStage(fresh, event.skipBrainstorm ? 'plan' : 'brainstorm', config);
     }
+    case 'start_onboard':
+      return enterStage({ ...newRun(), kind: 'onboard', feature: 'onboarding', idea: 'Bring this existing project into the workflow' }, 'map', config);
     case 'advance':
       return run.stage === 'brainstorm' && run.status !== 'working' ? enterStage(run, 'plan', config) : none;
     case 'main_turn_done': {
@@ -213,6 +241,12 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       }
       if (run.stage === 'brainstorm') {
         return { run: { ...run, status: 'waiting' }, effects: [] };
+      }
+      if (isOnboardStage(run.stage)) {
+        return {
+          run: log({ ...run, status: 'waiting', awaiting: run.stage }, `Onboarding: ${run.stage} is ready for your review.`),
+          effects: [{ type: 'notify', text: `Onboarding: the ${run.stage} stage is ready for review` }],
+        };
       }
       if (run.stage === 'plan') {
         if (config.pipeline.approvals.plan) {
@@ -230,7 +264,7 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         ? { run: log({ ...run, status: 'waiting', awaiting: null }, `The ${run.stage} turn stopped: ${event.error}`), effects: [] }
         : none;
     case 'retry_stage':
-      return run.status === 'waiting' && run.awaiting === null && (run.stage === 'plan' || run.stage === 'stories' || run.stage === 'brainstorm') ? enterStage(run, run.stage, config) : none;
+      return run.status === 'waiting' && run.awaiting === null && (run.stage === 'plan' || run.stage === 'stories' || run.stage === 'brainstorm' || isOnboardStage(run.stage)) ? enterStage(run, run.stage, config) : none;
     case 'stories_loaded': {
       if (run.stage !== 'stories') {
         return none;
@@ -253,6 +287,14 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         if (run.awaiting === 'stories') {
           return enterStage(log(run, 'Stories approved.'), 'build', config);
         }
+        if (run.awaiting !== null && isOnboardStage(run.awaiting)) {
+          const next = nextOnboardStage(run.awaiting);
+          const approved = log(run, `Onboarding: ${run.awaiting} approved.`);
+          if (next === 'done') {
+            return { run: log({ ...approved, stage: 'done', status: 'idle', awaiting: null }, 'Onboarding is complete.'), effects: [{ type: 'notify', text: 'Onboarding is complete' }] };
+          }
+          return enterStage(approved, next, config);
+        }
         return none;
       }
       const story = run.stories[event.storyId];
@@ -268,6 +310,10 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       if (event.storyId === undefined) {
         if (run.awaiting === 'plan') {
           return { run: log({ ...run, awaiting: null, status: 'working' }, 'Plan sent back for changes.'), effects: [{ type: 'send_main', prompt: `Revise the plan in Plans/${run.feature}.md. Keep everything that is not affected. What to change:\n\n${event.reason}` }] };
+        }
+        if (run.awaiting !== null && isOnboardStage(run.awaiting)) {
+          const file = run.awaiting === 'backlog' ? 'the stories you wrote from the audit' : `Plans/onboarding/${run.awaiting}.md`;
+          return { run: log({ ...run, awaiting: null, status: 'working' }, `Onboarding: ${run.awaiting} sent back for changes.`), effects: [{ type: 'send_main', prompt: `Revise ${file}. What to change:\n\n${event.reason}` }] };
         }
         if (run.awaiting === 'stories') {
           return { run: log({ ...run, awaiting: null, status: 'working' }, 'Stories sent back for changes.'), effects: [{ type: 'send_main', prompt: `Revise the stories for the feature "${run.feature}" in the Stories folder. What to change:\n\n${event.reason}` }] };
@@ -352,6 +398,9 @@ export function pendingItems(run: FeatureRun | null): { storyId: string | null; 
   }
   if (run.awaiting === 'stories') {
     items.push({ storyId: null, text: `Stories for "${run.feature}" are ready for review` });
+  }
+  if (run.awaiting !== null && isOnboardStage(run.awaiting)) {
+    items.push({ storyId: null, text: `Onboarding: the ${run.awaiting} stage is ready for review` });
   }
   for (const story of Object.values(run.stories)) {
     if (story.stage === 'awaiting_approval') {
