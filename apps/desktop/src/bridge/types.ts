@@ -17,6 +17,7 @@ export interface ResolvedSetting {
   value: unknown;
   scope: SettingsScope;
   path: string;
+  mergedFrom: SettingsScope[];
 }
 
 export interface ProjectUiSettings {

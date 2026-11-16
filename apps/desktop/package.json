@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "dev:web": "npm --prefix ../.. run build:sidecar && vite",
+    "build:web": "npm --prefix ../.. run build:sidecar && vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "tauri": "tauri"

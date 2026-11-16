@@ -57,3 +57,25 @@ Short architecture decision records. Newest last.
 ## 8. npm workspaces, exact versions (2026-11-16)
 
 **Decision.** One repository with npm workspaces (`packages/*`, `sidecar`, `apps/*`). `.npmrc` sets `save-exact=true`; Rust crates are pinned with `=` requirements.
+
+## 9. Git through the `git` command line, not libgit2 (2026-11-16)
+
+**Context.** The Rust core needs branch, clean/dirty and remote for each project now, and worktrees, diffs and merges later. The `git2` crate (libgit2) has limited worktree support and can behave differently from the user's own git (credentials, config, hooks).
+
+**Decision.** Run the installed `git` and parse its machine-readable output (`status --porcelain=v2 --branch`).
+
+**Consequence.** CuciCode behaves exactly like git in the user's terminal and needs no native build step for git. The parsing functions are pure and unit-tested.
+
+## 10. How effective settings are computed (2026-11-16)
+
+**Context.** The UI must show each setting's effective value and the scope and file it comes from. The docs state that scalars are overridden by the higher scope and that lists such as `permissions.allow` are combined across scopes; they do not say how nested objects or hooks combine.
+
+**Decision.** `settings/claude.rs` resolves in this order: managed, project local, project, user. A scalar takes the highest scope that defines it. Lists are combined, highest first, without duplicates. Objects are resolved one level deep, so `permissions.allow` and `env.NAME` are separate rows. Within the managed tier the first source present wins: machine policy (Windows registry HKLM), then `managed-settings.json` with its drop-in directory, then user policy (HKCU).
+
+**Limits.** Server-managed settings delivered by claude.ai are not read, and command-line `--settings` does not apply to a UI. The one-level object rule is an assumption to confirm by experiment before Phase 2 makes settings editable.
+
+## 11. The sidecar runs from the repository in development (2026-11-16)
+
+**Decision.** The Rust core starts `node sidecar/dist/sidecar.mjs`, located relative to the source tree (overridable with `CUCICODE_SIDECAR` and `CUCICODE_NODE`). The sidecar starts on the first request and is restarted on the next request if it exits.
+
+**Consequence.** Installer packaging (bundling Node and the SDK next to the executable) is not done; bundling is switched off in `tauri.conf.json` until then.

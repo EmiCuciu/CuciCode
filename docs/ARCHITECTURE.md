@@ -108,7 +108,20 @@ Claude Code settings are read from and written to Claude Code's own files; CuciC
 | Protocol package | Done |
 | Sidecar | Done, unit-tested, smoke-tested against the real SDK |
 | UI | Shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter, read-only effective settings. Type-checks and builds; timeline state is unit-tested. Not yet run inside the desktop shell |
-| Rust core | Not started (waiting for the MSVC C++ toolchain) |
+| Rust core | Sidecar supervisor, settings scope resolver, project registry with git status, per-project UI preferences. Unit-tested |
+| Voice input | Not started |
+
+## Rust core internals
+
+| File | Responsibility |
+|---|---|
+| `lib.rs` | Registers the Tauri commands; each one is a thin wrapper that runs file and git work off the UI thread |
+| `sidecar.rs` | Starts the Node sidecar on first use, matches responses to requests by id, forwards events to the UI, restarts it if it exits |
+| `settings/claude.rs` | Reads Claude Code's settings files at every scope and computes each effective value with its source (ADR 10) |
+| `settings/cucicode.rs` | Reads and writes CuciCode's own files under `.claude/cucicode/`, preserving keys it does not know and refusing files from a newer version |
+| `projects.rs` | Project registry (stored in `~/.claude/cucicode/settings.json`) and git status through the `git` command (ADR 9) |
+| `paths.rs` | Claude Code's directories and its project-path encoding |
+| `jsonfile.rs` | Tolerant JSON reading and atomic writing |
 
 ## UI internals
 

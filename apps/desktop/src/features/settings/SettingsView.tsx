@@ -44,7 +44,9 @@ export function SettingsView({ project }: { project: Project | null }) {
             <tr key={setting.key} className="border-b border-line/50 align-top">
               <td className="py-1 pr-3">{setting.key}</td>
               <td className="max-w-md py-1 pr-3 break-all">{JSON.stringify(setting.value)}</td>
-              <td className="py-1 pr-3 text-accent">{setting.scope}</td>
+              <td className="py-1 pr-3 text-accent" title={setting.mergedFrom.length > 1 ? 'Lists are combined across scopes' : undefined}>
+                {setting.mergedFrom.length > 1 ? setting.mergedFrom.join(' + ') : setting.scope}
+              </td>
               <td className="py-1 break-all text-muted">{setting.path}</td>
             </tr>
           ))}
