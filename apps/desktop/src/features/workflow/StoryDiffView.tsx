@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { workflowApi, type StoryDiff } from '../../bridge/tauri.ts';
+import { workflowApi, type StoryCommit, type StoryDiff } from '../../bridge/tauri.ts';
 import { useApp } from '../../state/store.ts';
 import { useWorkflow } from './workflowStore.ts';
 
@@ -25,6 +25,22 @@ export function StoryDiffView({ projectId, storyId }: { projectId: string; story
   const [diff, setDiff] = useState<StoryDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [commits, setCommits] = useState<StoryCommit[]>([]);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const working = useApp((state) => state.chats[`${projectId}::${storyId}`]?.timeline.runState === 'running');
+
+  const rewindTo = async (sha: string): Promise<void> => {
+    if (path === null) {
+      return;
+    }
+    try {
+      await workflowApi.resetStory(path, storyId, sha);
+      setConfirming(null);
+      setReload((value) => value + 1);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
 
   useEffect(() => {
     if (path === null) {
@@ -36,6 +52,10 @@ export function StoryDiffView({ projectId, storyId }: { projectId: string; story
       .diff(path, storyId)
       .then((result) => !cancelled && setDiff(result))
       .catch((reason: unknown) => !cancelled && setError(String(reason)));
+    workflowApi
+      .commits(path, storyId)
+      .then((result) => !cancelled && setCommits(result))
+      .catch(() => !cancelled && setCommits([]));
     return () => {
       cancelled = true;
     };
@@ -67,6 +87,36 @@ export function StoryDiffView({ projectId, storyId }: { projectId: string; story
                   <span className="text-muted">{(result.durationMs / 1000).toFixed(1)}s</span>
                 </div>
                 {!result.passed && <pre className="mt-1 max-h-64 overflow-auto rounded bg-bg p-2 font-mono text-[11px] whitespace-pre-wrap">{result.output}</pre>}
+              </div>
+            ))}
+          </details>
+        )}
+        {commits.length > 0 && (
+          <details className="mb-3 rounded border border-line p-2">
+            <summary className="cursor-pointer">
+              Checkpoints ({commits.length - 1}) <span className="text-muted">— CuciCode commits the worktree after every worker turn</span>
+            </summary>
+            {commits.map((commit, index) => (
+              <div key={commit.sha} className="mt-1 flex flex-wrap items-baseline gap-2 font-mono text-[12px]">
+                <span className="text-muted">{commit.short}</span>
+                <span className="min-w-0 flex-1 truncate">{commit.isBase ? `start of the story (${commit.subject})` : commit.subject}</span>
+                <span className="text-[11px] text-muted">{new Date(commit.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                {index === 0 ? (
+                  <span className="text-[11px] text-ok">current</span>
+                ) : confirming === commit.sha ? (
+                  <>
+                    <button type="button" className="text-[11px] text-bad" onClick={() => void rewindTo(commit.sha)}>
+                      discard everything after this
+                    </button>
+                    <button type="button" className="text-[11px] text-muted" onClick={() => setConfirming(null)}>
+                      cancel
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" disabled={working} className="text-[11px] text-muted hover:text-fg disabled:opacity-40" title={working ? 'Wait for the worker to finish its turn' : 'Reset the story branch to this commit'} onClick={() => setConfirming(commit.sha)}>
+                    rewind to here
+                  </button>
+                )}
               </div>
             ))}
           </details>

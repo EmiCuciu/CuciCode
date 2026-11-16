@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { Attachment, ChatInfo, MethodParams } from '@cucicode/protocol';
+import type { Attachment, ChatInfo, MethodParams, RewindResult } from '@cucicode/protocol';
 import { AsyncQueue } from './asyncQueue.ts';
 import { buildAgentEnv } from './env.ts';
 import { normalizeMessage } from './normalize.ts';
@@ -29,6 +29,10 @@ export class ChatSession {
   private readonly input = new AsyncQueue<SDKUserMessage>();
   private readonly query: Query;
   private closed = false;
+  /** Ids of messages sent from the UI that Claude Code has not echoed back yet, oldest first. */
+  private readonly unconfirmed: string[] = [];
+  /** UI message id to the id Claude Code gave that message, which file checkpoints are keyed by. */
+  private readonly checkpointIds = new Map<string, string>();
 
   constructor(
     private readonly params: MethodParams<'chat.open'>,
@@ -50,6 +54,8 @@ export class ChatSession {
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         settingSources: ['user', 'project', 'local'],
         includePartialMessages: true,
+        enableFileCheckpointing: true,
+        extraArgs: { 'replay-user-messages': null },
         includeHookEvents: true,
         forwardSubagentText: true,
         env: buildAgentEnv(process.env, params.env),
@@ -75,11 +81,13 @@ export class ChatSession {
       text: params.text,
       attachmentCount: attachments.length,
     });
+    this.unconfirmed.push(uuid);
     this.input.push({
       type: 'user',
       message: { role: 'user', content: attachments.length > 0 ? content : params.text },
       parent_tool_use_id: null,
       priority: params.priority,
+      uuid,
     } as SDKUserMessage);
   }
 
@@ -93,6 +101,18 @@ export class ChatSession {
 
   async setPermissionMode(mode: MethodParams<'chat.setPermissionMode'>['mode']): Promise<void> {
     await this.query.setPermissionMode(mode);
+  }
+
+  /** Restores files Claude edited to their state when the given user message was sent. */
+  async rewind(messageId: string, dryRun: boolean): Promise<RewindResult> {
+    const result = await this.query.rewindFiles(this.checkpointIds.get(messageId) ?? messageId, { dryRun });
+    return {
+      canRewind: result.canRewind,
+      error: result.error ?? null,
+      filesChanged: result.filesChanged ?? [],
+      insertions: result.insertions ?? 0,
+      deletions: result.deletions ?? 0,
+    };
   }
 
   async info(): Promise<ChatInfo> {
@@ -133,10 +153,23 @@ export class ChatSession {
     this.query.close();
   }
 
+  /** Claude Code echoes each user message with its own id; pair it with the message the UI sent. */
+  private noteReplay(message: unknown): void {
+    const replay = message as { type?: string; isReplay?: boolean; uuid?: string; parent_tool_use_id?: string | null; isSynthetic?: boolean };
+    if (replay.type !== 'user' || replay.isReplay !== true || replay.parent_tool_use_id || replay.isSynthetic === true || typeof replay.uuid !== 'string') {
+      return;
+    }
+    const local = this.unconfirmed.shift();
+    if (local !== undefined) {
+      this.checkpointIds.set(local, replay.uuid);
+    }
+  }
+
   private async pump(): Promise<void> {
     const ctx = { source: 'live' as const, now: () => Date.now() };
     try {
       for await (const message of this.query) {
+        this.noteReplay(message);
         for (const event of normalizeMessage(message, ctx)) {
           this.emit(this.params.chatId, event);
         }

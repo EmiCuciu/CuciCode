@@ -42,6 +42,7 @@ export class Dispatcher {
       'chat.setModel': (params) => this.chat(params.chatId).setModel(params.model),
       'chat.setPermissionMode': (params) => this.chat(params.chatId).setPermissionMode(params.mode),
       'chat.info': (params) => this.chat(params.chatId).info(),
+      'chat.rewind': (params) => this.chat(params.chatId).rewind(params.messageId, params.dryRun),
       'chat.close': (params) => {
         this.chats.get(params.chatId)?.close();
         this.chats.delete(params.chatId);

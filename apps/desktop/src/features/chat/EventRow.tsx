@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
-import type { EventCategory } from '@cucicode/protocol';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import type { EventCategory, RewindResult } from '@cucicode/protocol';
+import { sidecar } from '../../bridge/tauri.ts';
 import { useApp } from '../../state/store.ts';
 import { buildRows, hasChildren, type DisplayEvent, type TimelineRow, type TimelineState } from '../../state/timeline.ts';
 
@@ -59,6 +60,77 @@ function Line({ category, tag, title, children }: { category: EventCategory; tag
         <span className="min-w-0 truncate font-mono text-[12px]">{title}</span>
       </div>
       {children}
+    </div>
+  );
+}
+
+/** The chat a list of rows belongs to, so a row can act on its own session. */
+export const ChatIdContext = createContext<string | null>(null);
+
+function UserMessage({ event }: { event: Extract<DisplayEvent, { kind: 'user_message' }> }) {
+  const chatId = useContext(ChatIdContext);
+  const open = useApp((state) => (chatId ? state.chats[chatId]?.open === true : false));
+  const [preview, setPreview] = useState<RewindResult | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const messageId = event.id.replace(/:text$/, '');
+  const canOffer = chatId !== null && open && event.parentToolUseId === null;
+
+  const rewind = async (dryRun: boolean): Promise<void> => {
+    if (chatId === null) {
+      return;
+    }
+    try {
+      const result = await sidecar('chat.rewind', { chatId, messageId, dryRun });
+      if (!result.canRewind) {
+        setPreview(null);
+        setMessage(result.error ?? 'Nothing to rewind for this message.');
+      } else if (dryRun) {
+        setMessage(null);
+        setPreview(result);
+      } else {
+        const count = preview?.filesChanged.length ?? result.filesChanged.length;
+        setPreview(null);
+        setMessage(`Restored ${count} file(s). The conversation itself was not rewound.`);
+      }
+    } catch (reason) {
+      setPreview(null);
+      setMessage(String(reason));
+    }
+  };
+
+  return (
+    <div className="group rounded bg-raised px-3 py-2">
+      <div className="whitespace-pre-wrap">
+        {event.text}
+        {event.attachmentCount > 0 && <span className="ml-2 font-mono text-[11px] text-muted">+{event.attachmentCount} attachment(s)</span>}
+      </div>
+      {canOffer && preview === null && (
+        <button
+          type="button"
+          className="mt-1 hidden font-mono text-[11px] text-muted hover:text-fg group-hover:block"
+          title="Restores files Claude edited after this message. Shell commands and subagent edits are not undone."
+          onClick={() => void rewind(true)}
+        >
+          rewind files to here…
+        </button>
+      )}
+      {preview && (
+        <div className="mt-2 rounded border border-warn/60 p-2 text-[12px]">
+          <div>
+            This restores {preview.filesChanged.length} file(s) to how they were when you sent this message (+{preview.insertions} −{preview.deletions} lines).
+          </div>
+          <div className="font-mono text-[11px] text-muted">{preview.filesChanged.join(', ')}</div>
+          <div className="mt-1 flex gap-3">
+            <button type="button" className="text-warn" onClick={() => void rewind(false)}>
+              Restore files
+            </button>
+            <button type="button" className="text-muted" onClick={() => setPreview(null)}>
+              cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {message && <div className="mt-1 text-[11px] text-muted">{message}</div>}
     </div>
   );
 }
@@ -124,12 +196,7 @@ function ToolCall({ event, timeline, hidden }: { event: Extract<DisplayEvent, { 
 function renderEvent(event: DisplayEvent, timeline: TimelineState, hidden: ReadonlySet<EventCategory>): ReactNode {
   switch (event.kind) {
     case 'user_message':
-      return (
-        <div className="rounded bg-raised px-3 py-2 whitespace-pre-wrap">
-          {event.text}
-          {event.attachmentCount > 0 && <span className="ml-2 font-mono text-[11px] text-muted">+{event.attachmentCount} attachment(s)</span>}
-        </div>
-      );
+      return <UserMessage event={event} />;
     case 'assistant_text':
       return <div className="px-1 py-1 whitespace-pre-wrap">{event.text}</div>;
     case 'thinking':

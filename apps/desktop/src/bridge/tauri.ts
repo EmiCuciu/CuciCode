@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
   ChatInfo,
+  RewindResult,
   Method,
   MethodParams,
   SessionSummary,
@@ -20,6 +21,7 @@ interface SidecarResults {
   'chat.setModel': null;
   'chat.setPermissionMode': null;
   'chat.info': ChatInfo;
+  'chat.rewind': RewindResult;
   'chat.close': null;
   'permission.respond': null;
   'sessions.list': SessionSummary[];
@@ -85,6 +87,14 @@ export interface FileStat {
   removed: number | null;
 }
 
+export interface StoryCommit {
+  sha: string;
+  short: string;
+  date: string;
+  subject: string;
+  isBase: boolean;
+}
+
 export interface StoryDiff {
   base: string;
   files: FileStat[];
@@ -122,6 +132,8 @@ export const workflowApi = {
   addWorktree: (projectPath: string, storyId: string): Promise<Worktree> => invoke('worktree_add', { projectPath, storyId }),
   removeWorktree: (projectPath: string, storyId: string, deleteBranch: boolean): Promise<void> => invoke('worktree_remove', { projectPath, storyId, deleteBranch }),
   commitWorktree: (projectPath: string, storyId: string, message: string): Promise<boolean> => invoke('worktree_commit', { projectPath, storyId, message }),
+  commits: (projectPath: string, storyId: string): Promise<StoryCommit[]> => invoke('story_commits', { projectPath, storyId }),
+  resetStory: (projectPath: string, storyId: string, sha: string): Promise<void> => invoke('story_reset', { projectPath, storyId, sha }),
   diff: (projectPath: string, storyId: string): Promise<StoryDiff> => invoke('story_diff', { projectPath, storyId }),
   finish: (projectPath: string, storyId: string, push: boolean): Promise<FinishedStory> => invoke('story_finish', { projectPath, storyId, push }),
   checkCommands: (projectPath: string): Promise<string[]> => invoke('checks_commands', { projectPath }),

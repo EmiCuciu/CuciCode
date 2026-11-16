@@ -263,6 +263,72 @@ pub fn commit_folder(project: &Path, folder: &str, message: &str) -> AppResult<b
     Ok(true)
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoryCommit {
+    pub sha: String,
+    pub short: String,
+    pub date: String,
+    pub subject: String,
+    /// True for the commit the story branched from, which is "before any work".
+    pub is_base: bool,
+}
+
+pub fn parse_commit_log(output: &str) -> Vec<StoryCommit> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(4, '\t');
+            Some(StoryCommit {
+                sha: parts.next()?.to_owned(),
+                short: parts.next()?.to_owned(),
+                date: parts.next()?.to_owned(),
+                subject: parts.next().unwrap_or_default().to_owned(),
+                is_base: false,
+            })
+        })
+        .filter(|commit| !commit.sha.is_empty())
+        .collect()
+}
+
+const LOG_FORMAT: &str = "--format=%H%x09%h%x09%cI%x09%s";
+
+/// The story's checkpoints, newest first, ending with the commit it branched from.
+pub fn story_commits(project: &Path, id: &str) -> AppResult<Vec<StoryCommit>> {
+    check_story_id(id)?;
+    let worktree = worktree_path(project, id);
+    if !worktree.is_dir() {
+        return Err(invalid(format!("there is no worktree for {id}")));
+    }
+    let from = merge_base(&worktree, &base_branch(project)?)?;
+    let mut commits = parse_commit_log(&git(&worktree, &["log", LOG_FORMAT, &format!("{from}..HEAD")])?);
+    let mut base = parse_commit_log(&git(&worktree, &["log", "-1", LOG_FORMAT, &from])?);
+    for commit in &mut base {
+        commit.is_base = true;
+    }
+    commits.extend(base);
+    Ok(commits)
+}
+
+/// Moves a story back to one of its own checkpoints, discarding later commits and uncommitted edits.
+pub fn story_reset(project: &Path, id: &str, sha: &str) -> AppResult<()> {
+    check_story_id(id)?;
+    if sha.len() < 7 || sha.len() > 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(invalid("that is not a commit id"));
+    }
+    let worktree = worktree_path(project, id);
+    if !worktree.is_dir() {
+        return Err(invalid(format!("there is no worktree for {id}")));
+    }
+    let from = merge_base(&worktree, &base_branch(project)?)?;
+    let within = git(&worktree, &["merge-base", "--is-ancestor", sha, "HEAD"]).is_ok() && git(&worktree, &["merge-base", "--is-ancestor", &from, sha]).is_ok();
+    if !within {
+        return Err(invalid(format!("{sha} is not one of the checkpoints of story {id}")));
+    }
+    git(&worktree, &["reset", "--hard", sha])?;
+    Ok(())
+}
+
 /// Commits everything a worker left in its worktree. Returns false when there was nothing to commit.
 pub fn commit_worktree(project: &Path, id: &str, message: &str) -> AppResult<bool> {
     check_story_id(id)?;
@@ -287,6 +353,38 @@ pub fn push(project: &Path) -> AppResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_story_can_be_rewound_to_its_own_checkpoints_only() {
+        let dir = repo("rewind");
+        let worktree = PathBuf::from(worktree_add(&dir, "S-009").unwrap().path);
+        commit_in(&worktree, "one.txt", "1\n", "S-009: build");
+        commit_in(&worktree, "two.txt", "2\n", "S-009: fixing");
+        fs::write(worktree.join("scratch.txt"), "uncommitted\n").unwrap();
+        git(&worktree, &["add", "scratch.txt"]).unwrap();
+
+        let commits = story_commits(&dir, "S-009").unwrap();
+        let subjects: Vec<&str> = commits.iter().map(|commit| commit.subject.as_str()).collect();
+        assert_eq!(subjects, vec!["S-009: fixing", "S-009: build", "init"]);
+        assert_eq!(commits.iter().map(|commit| commit.is_base).collect::<Vec<_>>(), vec![false, false, true]);
+
+        story_reset(&dir, "S-009", &commits[1].sha).unwrap();
+        assert!(worktree.join("one.txt").exists());
+        assert!(!worktree.join("two.txt").exists());
+        assert!(!worktree.join("scratch.txt").exists(), "staged but uncommitted work is discarded too");
+        assert_eq!(story_commits(&dir, "S-009").unwrap().len(), 2);
+
+        story_reset(&dir, "S-009", &commits[2].short).unwrap();
+        assert!(!worktree.join("one.txt").exists());
+
+        commit_in(&dir, "main-only.txt", "x\n", "work on main");
+        let main_head = git(&dir, &["rev-parse", "HEAD"]).unwrap().trim().to_owned();
+        assert!(story_reset(&dir, "S-009", &main_head).is_err(), "a commit outside the story is refused");
+        assert!(story_reset(&dir, "S-009", "HEAD~1").is_err());
+        assert!(story_reset(&dir, "S-009", "zzzzzzz").is_err());
+        worktree_remove(&dir, "S-009", true).unwrap();
+        cleanup(&dir);
+    }
 
     #[test]
     fn commit_folder_commits_only_that_folder_and_reports_when_nothing_changed() {

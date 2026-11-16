@@ -5,7 +5,7 @@ import { emptyTimeline } from '../../state/timeline.ts';
 import { StoryDiffView } from '../workflow/StoryDiffView.tsx';
 import { useWorkflow, workerChatId, type CenterView } from '../workflow/workflowStore.ts';
 import { Composer } from './Composer.tsx';
-import { Rows } from './EventRow.tsx';
+import { ChatIdContext, Rows } from './EventRow.tsx';
 import { FilterChips } from './FilterChips.tsx';
 
 const NO_HIDDEN: EventCategory[] = [];
@@ -68,7 +68,9 @@ function Conversation({ projectId, chatId }: { projectId: string; chatId: string
               {chatId === projectId ? 'Start a conversation, or pick a session on the right to continue it.' : 'This worker has not started in this app session. Its work is in the diff tab.'}
             </div>
           )}
-          <Rows timeline={timeline} parentToolUseId={null} hidden={hidden} />
+          <ChatIdContext.Provider value={chatId}>
+            <Rows timeline={timeline} parentToolUseId={null} hidden={hidden} />
+          </ChatIdContext.Provider>
           {timeline.draft && !hidden.has('thinking') && timeline.draft.thinking && (
             <div className="border-l-2 border-line pl-3 text-muted whitespace-pre-wrap">{timeline.draft.thinking}</div>
           )}

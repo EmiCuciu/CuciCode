@@ -152,6 +152,16 @@ async fn worktree_commit(project_path: PathBuf, story_id: String, message: Strin
 }
 
 #[tauri::command]
+async fn story_commits(project_path: PathBuf, story_id: String) -> AppResult<Vec<git_ops::StoryCommit>> {
+    blocking(move || git_ops::story_commits(&project_path, &story_id)).await
+}
+
+#[tauri::command]
+async fn story_reset(project_path: PathBuf, story_id: String, sha: String) -> AppResult<()> {
+    blocking(move || git_ops::story_reset(&project_path, &story_id, &sha)).await
+}
+
+#[tauri::command]
 async fn story_diff(project_path: PathBuf, story_id: String) -> AppResult<git_ops::StoryDiff> {
     blocking(move || git_ops::story_diff(&project_path, &story_id)).await
 }
@@ -415,6 +425,8 @@ pub fn run() {
             worktree_add,
             worktree_remove,
             worktree_commit,
+            story_commits,
+            story_reset,
             story_diff,
             story_merge,
             story_finish,

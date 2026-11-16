@@ -38,6 +38,15 @@ export interface ChatInfo {
   context: ContextUsage | null;
 }
 
+/** What rewinding files to a user message would change, or did change. */
+export interface RewindResult {
+  canRewind: boolean;
+  error: string | null;
+  filesChanged: string[];
+  insertions: number;
+  deletions: number;
+}
+
 export interface ReadyMessage {
   type: 'ready';
   protocolVersion: number;

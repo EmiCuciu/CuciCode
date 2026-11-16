@@ -45,6 +45,7 @@ export const methodSchemas = {
   'chat.setModel': chatRef.extend({ model: z.string().optional() }),
   'chat.setPermissionMode': chatRef.extend({ mode: permissionModeSchema }),
   'chat.info': chatRef,
+  'chat.rewind': chatRef.extend({ messageId: z.string().min(1), dryRun: z.boolean() }),
   'chat.close': chatRef,
   'permission.respond': z.object({
     requestId: z.string().min(1),
