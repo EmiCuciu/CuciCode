@@ -149,3 +149,29 @@ Short architecture decision records. Newest last.
 **Context.** When the subscription window runs out, Claude Code ends the turn with a `success` result whose text is "You've hit your 5-hour limit". Treated as success, the pipeline would run checks and review on work that was never done.
 
 **Decision.** The driver watches for the `rate_limit` event with status `rejected` (and, as a fallback, the limit message itself) and reports that turn as stopped. A main-thread stage waits with a "Run it again" action; a story is marked failed with the reason and can be retried.
+
+## 22. A subagent role's model is changed in the agent's own file (2026-11-16)
+
+**Context.** The routing table lets the user set model and effort per role. For the main thread and workers CuciCode starts the session and can pass those values. Subagent roles (planner, story writer, explorer, reviewers) are started by Claude Code, which reads the model from the agent file.
+
+**Decision.** For subagent roles the table edits the `model` and `effort` lines of the agent file (`features/toolkit/frontmatterEdit.ts`). If the role uses a read-only agent, such as CuciCode's own, the agent is first copied into the project's `.claude/agents` and the role is pointed at the copy. The same copy step is the "create a new one from CuciCode's template" choice.
+
+**Consequence.** There is no CuciCode-only model override: the terminal sees exactly what the table shows. The cost is that changing a model on a plugin agent creates a project file.
+
+## 23. Two kinds of rewind (2026-11-16)
+
+**Decision.** In a chat, "rewind files to here" on a user message uses Claude Code's file checkpointing (`enableFileCheckpointing`, `Query.rewindFiles`) with a dry-run preview first. In the pipeline, every worker turn is a git commit on the story branch, and "rewind to here" resets the branch to one of them (`git_ops::story_reset`).
+
+**Limits.** File checkpointing restores files changed by Claude's edit tools only, not by shell commands or subagents, and does not rewind the conversation. The story reset accepts only commits between the story's branch point and its head.
+
+**Evidence.** `sidecar/scripts/rewind-smoke.ts` runs a real session that creates a file, previews the rewind, applies it and checks the file is gone.
+
+## 24. Pull requests through the host's API, with a token the agents never see (2026-11-16)
+
+**Decision.** With push mode "pull request", approving a story pushes its branch with the user's normal git credentials and opens a pull request through the GitHub or Bitbucket REST API (`git_host.rs`) instead of merging locally. The API token is stored in the OS keychain under a `CUCICODE_` name. Secrets with that prefix are excluded from the environment given to sessions.
+
+**Limits.** Stories that depend on a story sent as a pull request start from the base branch without its changes until it is merged on the host. "Require CI before merge" is left to the host's branch protection, because CuciCode does not merge pull requests. The API calls are unit-tested for request shape and response parsing but have not been run against a live host.
+
+## 25. Onboarding an existing project uses the same engine (2026-11-16)
+
+**Decision.** Map, baseline, scope, audit and backlog are a second stage list in the same state machine (`kind: 'onboard'`). Each stage sends `/cucicode:onboard <stage>` to the main thread, writes one file under `Plans/onboarding/`, and always waits for approval, because each stage's output is what the next one trusts.

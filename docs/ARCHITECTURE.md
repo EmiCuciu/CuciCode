@@ -160,12 +160,17 @@ In the UI (`features/toolkit`), pure logic is kept apart from components and uni
 | `features/workflow/pipeline.ts` | The engine: a pure `step(run, event, config)` returning the next run and effects (ADR 17) |
 | `features/workflow/workflowStore.ts` | The driver: performs effects, listens to session events, saves the run, builds the Inbox |
 | `features/workflow/config.ts` | Typed workflow settings with defaults, layered default → project → local |
-| `git_ops.rs` | Story worktrees, diff against the merge base, commit, merge (aborted on conflict), push |
+| `git_ops.rs` | Story worktrees, diff against the merge base, commit, merge (aborted on conflict), push, checkpoints and reset |
+| `git_host.rs` | Reads host, owner and repository from `origin`; opens pull requests on GitHub and Bitbucket (ADR 24) |
 | `checks.rs` | Detects check commands from build files and runs them, stopping at the first failure |
 | `stories.rs` | Story files behind the `StoriesTarget` trait; the folder target is the only implementation so far |
 | `settings/cucicode.rs` | `.claude/cucicode/settings.json` (shared), `settings.local.json` (personal), `pipeline.local.json` (run state) |
 
 A story moves through `queued → building → checks → (fixing) → review → awaiting approval → merging → merged`. After each worker turn CuciCode commits the worktree and runs the checks itself (ADR 19). Finishing a story merges its branch, moves its file to the archive folder, commits that, and removes the worktree.
+
+An existing project is onboarded with a second stage list in the same engine: map, baseline, scope, audit, backlog (ADR 25).
+
+Rewind exists in two forms (ADR 23): file rewind on a chat message through Claude Code's checkpointing, and resetting a story to one of its commits.
 
 Checkpoints (after plan, after stories, after checks, after review) are per project; anything waiting, any failed story and any permission request appears in the **Inbox** in the top bar.
 
