@@ -1,0 +1,14 @@
+node_modules/
+dist/
+target/
+*.log
+.env*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/
+.claude/settings.local.json
+.claude/cucicode/settings.local.json

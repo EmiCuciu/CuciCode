@@ -1,0 +1,20 @@
+{
+  "name": "cucicode",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Desktop UI for Claude Code that makes an agentic workflow visible and controllable",
+  "workspaces": [
+    "packages/*",
+    "sidecar",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build:sidecar": "npm run build --workspace sidecar",
+    "dev": "npm run tauri dev --workspace apps/desktop"
+  }
+}

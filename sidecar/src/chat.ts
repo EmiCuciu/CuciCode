@@ -1,0 +1,166 @@
+import { randomUUID } from 'node:crypto';
+import { query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Attachment, ChatInfo, MethodParams } from '@cucicode/protocol';
+import { AsyncQueue } from './asyncQueue.ts';
+import { buildAgentEnv } from './env.ts';
+import { normalizeMessage } from './normalize.ts';
+import type { ChatEmit, PermissionBroker } from './permissions.ts';
+
+type ContentBlock = Record<string, unknown>;
+
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+export function attachmentToBlock(attachment: Attachment): ContentBlock {
+  if (IMAGE_TYPES.has(attachment.mediaType)) {
+    return { type: 'image', source: { type: 'base64', media_type: attachment.mediaType, data: attachment.dataBase64 } };
+  }
+  if (attachment.mediaType === 'application/pdf') {
+    return {
+      type: 'document',
+      title: attachment.name,
+      source: { type: 'base64', media_type: attachment.mediaType, data: attachment.dataBase64 },
+    };
+  }
+  const text = Buffer.from(attachment.dataBase64, 'base64').toString('utf8');
+  return { type: 'document', title: attachment.name, source: { type: 'text', media_type: 'text/plain', data: text } };
+}
+
+export class ChatSession {
+  private readonly input = new AsyncQueue<SDKUserMessage>();
+  private readonly query: Query;
+  private closed = false;
+
+  constructor(
+    private readonly params: MethodParams<'chat.open'>,
+    private readonly emit: ChatEmit,
+    private readonly broker: PermissionBroker,
+    private readonly log: (message: string) => void,
+  ) {
+    this.query = query({
+      prompt: this.input,
+      options: {
+        cwd: params.cwd,
+        resume: params.resume,
+        forkSession: params.forkSession,
+        model: params.model,
+        effort: params.effort,
+        permissionMode: params.permissionMode,
+        canUseTool: broker.canUseToolFor(params.chatId),
+        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        settingSources: ['user', 'project', 'local'],
+        includePartialMessages: true,
+        includeHookEvents: true,
+        forwardSubagentText: true,
+        env: buildAgentEnv(process.env),
+        stderr: (data) => this.log(`[${params.chatId}] ${data.trimEnd()}`),
+      },
+    });
+    void this.pump();
+  }
+
+  send(params: MethodParams<'chat.send'>): void {
+    const attachments = params.attachments ?? [];
+    const content: ContentBlock[] = attachments.map(attachmentToBlock);
+    if (params.text.length > 0) {
+      content.push({ type: 'text', text: params.text });
+    }
+    const uuid = randomUUID();
+    this.emit(this.params.chatId, {
+      kind: 'user_message',
+      id: uuid,
+      ts: Date.now(),
+      category: 'message',
+      parentToolUseId: null,
+      text: params.text,
+      attachmentCount: attachments.length,
+    });
+    this.input.push({
+      type: 'user',
+      message: { role: 'user', content: attachments.length > 0 ? content : params.text },
+      parent_tool_use_id: null,
+      priority: params.priority,
+    } as SDKUserMessage);
+  }
+
+  async interrupt(): Promise<void> {
+    await this.query.interrupt();
+  }
+
+  async setModel(model: string | undefined): Promise<void> {
+    await this.query.setModel(model);
+  }
+
+  async setPermissionMode(mode: MethodParams<'chat.setPermissionMode'>['mode']): Promise<void> {
+    await this.query.setPermissionMode(mode);
+  }
+
+  async info(): Promise<ChatInfo> {
+    const [models, commands, account, context] = await Promise.all([
+      this.query.supportedModels(),
+      this.query.supportedCommands(),
+      this.query.accountInfo(),
+      this.query.getContextUsage().catch(() => null),
+    ]);
+    return {
+      models: models.map((model) => ({
+        value: model.value,
+        displayName: model.displayName,
+        description: model.description,
+        effortLevels: model.supportedEffortLevels ?? [],
+      })),
+      commands: commands.map((command) => ({
+        name: command.name,
+        description: command.description,
+        argumentHint: command.argumentHint,
+        builtin: command.builtin === true,
+      })),
+      subscriptionType: account.subscriptionType ?? null,
+      authSource: account.tokenSource ?? account.apiKeySource ?? null,
+      context: context
+        ? { usedTokens: context.totalTokens, maxTokens: context.rawMaxTokens, percentage: context.percentage }
+        : null,
+    };
+  }
+
+  close(): void {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.broker.cancelChat(this.params.chatId);
+    this.input.close();
+    this.query.close();
+  }
+
+  private async pump(): Promise<void> {
+    const ctx = { source: 'live' as const, now: () => Date.now() };
+    try {
+      for await (const message of this.query) {
+        for (const event of normalizeMessage(message, ctx)) {
+          this.emit(this.params.chatId, event);
+        }
+      }
+    } catch (error) {
+      if (!this.closed) {
+        this.emit(this.params.chatId, {
+          kind: 'notice',
+          id: randomUUID(),
+          ts: Date.now(),
+          category: 'system',
+          parentToolUseId: null,
+          level: 'error',
+          text: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      this.emit(this.params.chatId, {
+        kind: 'session_state',
+        id: randomUUID(),
+        ts: Date.now(),
+        category: 'system',
+        parentToolUseId: null,
+        state: 'idle',
+      });
+    }
+  }
+}
