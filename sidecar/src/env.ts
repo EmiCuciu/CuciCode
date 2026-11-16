@@ -6,8 +6,8 @@ const CREDENTIAL_OVERRIDES = [
 
 export const CLIENT_APP = 'cucicode/0.1.0';
 
-export function buildAgentEnv(source: NodeJS.ProcessEnv): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...source };
+export function buildAgentEnv(source: NodeJS.ProcessEnv, extra: Record<string, string> = {}): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...source, ...extra };
   for (const name of CREDENTIAL_OVERRIDES) {
     delete env[name];
   }

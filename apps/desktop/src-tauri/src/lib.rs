@@ -1,7 +1,9 @@
+mod claude_cli;
 mod error;
 mod jsonfile;
 mod paths;
 mod projects;
+mod secrets;
 mod settings;
 mod sidecar;
 mod toolkit;
@@ -14,6 +16,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 use voice::{Voice, VoiceStatus};
 
+use claude_cli::{CliScope, PluginAction};
 use error::{AppError, AppResult};
 use projects::Project;
 use settings::claude::{ResolvedSetting, Scope, ScopeFile, SettingsLocations};
@@ -33,7 +36,14 @@ where
 
 #[tauri::command]
 async fn sidecar_request(sidecar: State<'_, Sidecar>, method: String, params: Option<Value>) -> AppResult<Value> {
-    sidecar.request(&method, params.unwrap_or(Value::Null)).await
+    let mut params = params.unwrap_or(Value::Null);
+    if method == "chat.open" {
+        if let Some(object) = params.as_object_mut() {
+            let secrets = blocking(|| Ok(secrets::environment())).await?;
+            object.insert("env".into(), serde_json::json!(secrets));
+        }
+    }
+    sidecar.request(&method, params).await
 }
 
 #[tauri::command]
@@ -79,6 +89,56 @@ async fn cucicode_project_ui_set(project_path: PathBuf, settings: ProjectUiSetti
 #[tauri::command]
 async fn toolkit_scan(project_path: Option<PathBuf>) -> AppResult<toolkit::model::ToolkitScan> {
     blocking(move || toolkit::scan(project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn mcp_health(project_path: Option<PathBuf>) -> AppResult<Vec<claude_cli::McpHealth>> {
+    blocking(move || claude_cli::mcp_health(project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn mcp_add(scope: CliScope, name: String, config: Value, project_path: Option<PathBuf>) -> AppResult<()> {
+    blocking(move || claude_cli::mcp_add(scope, &name, &config, project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn mcp_remove(scope: CliScope, name: String, project_path: Option<PathBuf>) -> AppResult<()> {
+    blocking(move || claude_cli::mcp_remove(scope, &name, project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn plugin_action(action: PluginAction, plugin: String, scope: CliScope, project_path: Option<PathBuf>) -> AppResult<String> {
+    blocking(move || claude_cli::plugin(action, &plugin, scope, project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn marketplace_add(source: String, scope: CliScope, project_path: Option<PathBuf>) -> AppResult<String> {
+    blocking(move || claude_cli::marketplace_add(&source, scope, project_path.as_deref())).await
+}
+
+#[tauri::command]
+async fn marketplace_update(name: String) -> AppResult<String> {
+    blocking(move || claude_cli::marketplace_update(&name)).await
+}
+
+#[tauri::command]
+async fn marketplace_remove(name: String) -> AppResult<String> {
+    blocking(move || claude_cli::marketplace_remove(&name)).await
+}
+
+#[tauri::command]
+async fn secrets_names() -> AppResult<Vec<String>> {
+    blocking(secrets::names).await
+}
+
+#[tauri::command]
+async fn secrets_set(name: String, value: String) -> AppResult<()> {
+    blocking(move || secrets::set(&name, &value)).await
+}
+
+#[tauri::command]
+async fn secrets_delete(name: String) -> AppResult<()> {
+    blocking(move || secrets::delete(&name)).await
 }
 
 #[tauri::command]
@@ -154,6 +214,16 @@ pub fn run() {
             cucicode_project_ui_get,
             cucicode_project_ui_set,
             toolkit_scan,
+            mcp_health,
+            mcp_add,
+            mcp_remove,
+            plugin_action,
+            marketplace_add,
+            marketplace_update,
+            marketplace_remove,
+            secrets_names,
+            secrets_set,
+            secrets_delete,
             toolkit_read,
             toolkit_write,
             toolkit_create,

@@ -51,7 +51,7 @@ export class ChatSession {
         includePartialMessages: true,
         includeHookEvents: true,
         forwardSubagentText: true,
-        env: buildAgentEnv(process.env),
+        env: buildAgentEnv(process.env, params.env),
         stderr: (data) => this.log(`[${params.chatId}] ${data.trimEnd()}`),
       },
     });

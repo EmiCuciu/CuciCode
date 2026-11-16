@@ -33,6 +33,7 @@ export const methodSchemas = {
     model: z.string().optional(),
     effort: effortSchema.optional(),
     permissionMode: permissionModeSchema.optional(),
+    env: z.record(z.string(), z.string()).optional(),
   }),
   'chat.send': chatRef.extend({
     text: z.string(),
