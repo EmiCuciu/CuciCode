@@ -79,3 +79,31 @@ Short architecture decision records. Newest last.
 **Decision.** The Rust core starts `node sidecar/dist/sidecar.mjs`, located relative to the source tree (overridable with `CUCICODE_SIDECAR` and `CUCICODE_NODE`). The sidecar starts on the first request and is restarted on the next request if it exits.
 
 **Consequence.** Installer packaging (bundling Node and the SDK next to the executable) is not done; bundling is switched off in `tauri.conf.json` until then.
+
+## 12. The Toolkit reads files itself but changes shared state through Claude Code (2026-11-16)
+
+**Context.** The Toolkit must list everything Claude Code can load and let the user change it. Some of it is plain files CuciCode can own (agents, skills, commands, output styles, rules, settings files). Some lives in files Claude Code rewrites all the time or manages with its own logic: MCP servers in `~/.claude.json`, installed plugins, marketplaces.
+
+**Decision.** Scanning is done in Rust by reading files directly (`toolkit/`), which is fast and works with no session running. Markdown items and settings keys are written directly, at the scope the user picks. MCP servers, plugins and marketplaces are changed only by running the `claude` command (`claude mcp add-json`, `claude plugin install`, `claude plugin marketplace add`, ...), wrapped in `claude_cli.rs`.
+
+**Consequence.** CuciCode never corrupts `~/.claude.json` and automatically follows Claude Code's own rules for plugins. The cost is that those actions are slower and their errors are the CLI's text. Plugin and managed items are read-only; "Duplicate" copies one into a scope the user owns.
+
+## 13. Precedence rules are encoded once, with their source stated (2026-11-16)
+
+**Decision.** `toolkit/conflicts.rs` holds the order in which same-named items win: agents and output styles (managed, project, user, plugin), skills (managed, user, project), MCP servers (local, project, user, plugin), and "a skill beats a command of the same name". Each conflict shown in the UI carries the rule as a sentence.
+
+**Limit.** The order for two commands with the same name is not documented; CuciCode assumes it follows skills and says so in the UI.
+
+## 14. Secrets go to the OS keychain and are referenced as `${NAME}` (2026-11-16)
+
+**Context.** `.mcp.json` is usually committed, so tokens must not be written into it. Claude Code expands `${VAR}` in MCP configuration from its environment.
+
+**Decision.** In the add-server form, a value marked secret is stored in the OS keychain (`secrets.rs`, service `cucicode`) and the configuration gets `${NAME}` instead. Only the list of secret names is kept in `~/.claude/cucicode/settings.json`. When CuciCode starts a session, the Rust core adds the secrets to that session's environment; the values never pass through the UI.
+
+**Consequence.** The committed file is safe. The trade-off against "identical in a terminal": a terminal `claude` needs the same variables set by the user, and the form says so.
+
+## 15. Settings forms come from a vendored copy of the published schema (2026-11-16)
+
+**Decision.** `apps/desktop/src/assets/claude-code-settings.schema.json` is a copy of `https://json.schemastore.org/claude-code-settings.json` (142 keys). The settings screen builds its list, descriptions and input types from it; keys found in files but missing from the schema are still shown and editable as JSON.
+
+**Consequence.** No network access at run time and no hand-written form per setting. The copy must be refreshed when Claude Code adds settings. Writing a setting replaces one top-level key in one scope's file and leaves the rest of the file, including key order, untouched.

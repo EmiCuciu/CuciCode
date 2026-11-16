@@ -107,9 +107,35 @@ Claude Code settings are read from and written to Claude Code's own files; CuciC
 |---|---|
 | Protocol package | Done |
 | Sidecar | Done, unit-tested, smoke-tested against the real SDK |
-| UI | Shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter, read-only effective settings. Type-checks and builds; timeline state is unit-tested. Not yet run inside the desktop shell |
-| Rust core | Sidecar supervisor, settings scope resolver, project registry with git status, per-project UI preferences. Unit-tested |
+| UI | Phase 1: shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter. Phase 2: Toolkit screen, settings editor, slash-command menu. Logic is unit-tested; screens were checked by launching the app |
+| Rust core | Sidecar supervisor, settings resolver and editor, project registry, Toolkit scanner and editor, file watcher, Claude CLI wrapper, keychain secrets. Unit-tested |
 | Voice input | Push-to-talk recording and local transcription. Compiles; audio conversion is unit-tested; not yet tried with a microphone |
+
+## Toolkit
+
+The Toolkit answers "what can Claude Code load here, where does each thing live, and which one wins".
+
+| File | Responsibility |
+|---|---|
+| `toolkit/mod.rs` | `scan(project)`: walks every scope and returns items, installed plugins and marketplaces |
+| `toolkit/files.rs` | Markdown items: agents, skills, commands, output styles, rules, `CLAUDE.md` files |
+| `toolkit/embedded.rs` | Items that live inside JSON: hooks (settings, plugin `hooks.json`) and MCP servers (`~/.claude.json`, `.mcp.json`, `managed-mcp.json`). Values of env vars and headers are never returned, only their names |
+| `toolkit/frontmatter.rs` | Splits a markdown file into YAML frontmatter and body |
+| `toolkit/conflicts.rs` | Marks same-named items and says which one Claude Code uses (ADR 13) |
+| `toolkit/validate.rs` | Checks frontmatter against the documented fields of each kind |
+| `toolkit/edit.rs` | Read, write, create, delete, copy and move, restricted to Claude Code folders |
+| `toolkit/plugins.rs` | Reads `installed_plugins.json` and `known_marketplaces.json` |
+| `toolkit/watch.rs` | Watches item folders and settings files and tells the UI to rescan |
+| `claude_cli.rs` | Runs the `claude` command for MCP servers, plugins and marketplaces (ADR 12) |
+| `secrets.rs` | OS keychain storage for values referenced as `${NAME}` (ADR 14) |
+
+Scopes scanned: managed, user (`~/.claude`), project (`.claude`), local (`settings.local.json`, `CLAUDE.local.md`, local MCP servers) and enabled plugins.
+
+In the UI (`features/toolkit`), pure logic is kept apart from components and unit-tested: `templates.ts` (wizard output), `mcp.ts` (server entry and secret references), `hooks.ts` (adding and removing a hook in a settings value), `toolkitStore.ts` (filters). The slash-command menu (`features/chat/slashCommands.ts`) uses Claude Code's own command list once a session runs and the Toolkit scan before that; `/model`, `/agents`, `/mcp`, `/hooks` and `/plugin` open the matching CuciCode screen.
+
+## Settings editor
+
+`settings/claude.rs` lists the settings file of each scope (`scope_files`) and sets or removes one key in one of them (`set_value`). The screen (`features/settings`) is generated from the published schema (ADR 15): for each setting it shows the effective value, the value in each scope, and an editor that writes to the scope the user chooses.
 
 ## Voice input
 
@@ -138,7 +164,7 @@ Claude Code settings are read from and written to Claude Code's own files; CuciC
 
 A session is opened lazily: viewing an old session only loads its history; the Claude Code process starts (with `resume`) on the first message sent.
 
-## Commands the Rust core must provide
+## Commands the Rust core provides
 
 | Command | Purpose |
 |---|---|
@@ -147,6 +173,11 @@ A session is opened lazily: viewing an old session only loads its history; the C
 | `projects_list`, `projects_add(path)`, `projects_remove(id)` | Project registry with git branch, clean/dirty, remote host |
 | `claude_settings_resolve(projectPath)` | Effective Claude Code settings, each with winning scope and file path |
 | `cucicode_project_ui_get/set(projectPath)` | Per-project UI preferences in `.claude/cucicode/settings.local.json` |
+| `claude_settings_files`, `claude_settings_set` | Settings file per scope; set or remove one key in a scope |
+| `toolkit_scan`, `toolkit_watch`, `toolkit_read/write/create/delete/copy`, `toolkit_validate` | Toolkit listing, change notifications and item editing |
+| `mcp_health`, `mcp_add`, `mcp_remove` | MCP servers through the `claude` command |
+| `plugin_action`, `marketplace_add/update/remove` | Plugins and marketplaces through the `claude` command |
+| `secrets_names`, `secrets_set`, `secrets_delete` | Keychain secrets; values are write-only from the UI |
 | `voice_status`, `voice_download_model`, `voice_start`, `voice_stop` | Push-to-talk; `voice_stop` returns the transcript; event `voice://download` reports model download progress |
 
 ## Running it
