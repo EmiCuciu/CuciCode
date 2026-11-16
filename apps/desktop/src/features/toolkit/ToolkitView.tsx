@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ItemKind, ToolkitItem } from '../../bridge/types.ts';
 import { useApp } from '../../state/store.ts';
+import { toolkitApi, type McpHealth } from '../../bridge/tauri.ts';
+import { HookForm } from './HookForm.tsx';
 import { ItemDetail } from './ItemDetail.tsx';
+import { McpAddForm } from './McpAddForm.tsx';
 import { NewItemWizard } from './NewItemWizard.tsx';
 import { PluginsPanel } from './PluginsPanel.tsx';
 import { countByKind, filterItems, useToolkit, type ScopeFilter, type ToolkitTab } from './toolkitStore.ts';
@@ -21,13 +24,17 @@ const SCOPES: ScopeFilter[] = ['all', 'managed', 'user', 'project', 'local', 'pl
 const NO_ITEMS: ToolkitItem[] = [];
 const selectClass = 'rounded border border-line bg-panel px-1.5 py-1 text-fg';
 
-function ItemRow({ item, active, onSelect }: { item: ToolkitItem; active: boolean; onSelect: () => void }) {
+const HEALTH_TONE: Record<McpHealth['status'], string> = { connected: 'text-ok', needsAuth: 'text-warn', failed: 'text-bad', unknown: 'text-muted' };
+const HEALTH_LABEL: Record<McpHealth['status'], string> = { connected: 'connected', needsAuth: 'needs auth', failed: 'failed', unknown: 'unknown' };
+
+function ItemRow({ item, active, health, onSelect }: { item: ToolkitItem; active: boolean; health: McpHealth | undefined; onSelect: () => void }) {
   return (
     <button type="button" onClick={onSelect} className={`block w-full border-l-2 px-3 py-1.5 text-left ${active ? 'border-accent bg-raised' : 'border-transparent hover:bg-raised/50'}`}>
       <div className="flex items-baseline gap-2">
         <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{item.name}</span>
         {item.conflict && <span className={`font-mono text-[11px] ${item.conflict.wins ? 'text-ok' : 'text-warn'}`}>{item.conflict.wins ? 'wins' : 'overridden'}</span>}
         {item.problem && <span className="font-mono text-[11px] text-bad">invalid</span>}
+        {health && <span className={`font-mono text-[11px] ${HEALTH_TONE[health.status]}`}>{HEALTH_LABEL[health.status]}</span>}
       </div>
       <div className="flex gap-2 font-mono text-[11px] text-muted">
         <span className="text-accent">{item.kind}</span>
@@ -42,7 +49,7 @@ function ItemRow({ item, active, onSelect }: { item: ToolkitItem; active: boolea
 export function ToolkitView() {
   const projects = useApp((state) => state.projects);
   const activeProjectId = useApp((state) => state.activeProjectId);
-  const { scan, loading, error, tab, scope, search, selectedId, projectPath, load, refresh, setTab, setScope, setSearch, select } = useToolkit();
+  const { scan, loading, error, tab, scope, search, selectedId, projectPath, health, checkingHealth, load, refresh, checkHealth, setTab, setScope, setSearch, select } = useToolkit();
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -51,9 +58,10 @@ export function ToolkitView() {
   }, [activeProjectId, load]);
 
   useEffect(() => {
-    const onFocus = (): void => void refresh();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    const unlisten = toolkitApi.onChanged(() => void refresh());
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
   }, [refresh]);
 
   const items = scan?.items ?? NO_ITEMS;
@@ -61,6 +69,9 @@ export function ToolkitView() {
   const visible = useMemo(() => filterItems(items, tab, scope, search), [items, tab, scope, search]);
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const creatableKind: ItemKind = tab === 'all' || tab === 'plugins' || tab === 'hook' || tab === 'mcp' ? 'agent' : tab;
+  const healthByName = useMemo(() => new Map((health ?? []).map((entry) => [entry.name, entry])), [health]);
+  const configured = useMemo(() => new Set(items.filter((item) => item.kind === 'mcp').map((item) => item.name)), [items]);
+  const otherServers = (health ?? []).filter((entry) => !configured.has(entry.name));
 
   return (
     <section className="flex min-w-0 flex-1 flex-col">
@@ -101,12 +112,27 @@ export function ToolkitView() {
         <button type="button" className="rounded border border-line px-2 py-1 text-muted hover:text-fg" onClick={() => void refresh()}>
           {loading ? 'Scanning…' : 'Refresh'}
         </button>
+        {tab === 'mcp' && (
+          <button
+            type="button"
+            disabled={checkingHealth}
+            className="rounded border border-line px-2 py-1 text-muted hover:text-fg disabled:opacity-40"
+            title="Runs 'claude mcp list', which connects to every server"
+            onClick={() => void checkHealth()}
+          >
+            {checkingHealth ? 'Testing…' : 'Test connections'}
+          </button>
+        )}
         <button type="button" className="rounded bg-accent/20 px-3 py-1 text-accent" onClick={() => setCreating(true)}>
-          New
+          {tab === 'mcp' ? 'Add server' : tab === 'hook' ? 'New hook' : 'New'}
         </button>
       </div>
       {error && <div className="bg-bad/15 px-3 py-1 text-bad">{error}</div>}
-      {creating ? (
+      {creating && tab === 'mcp' ? (
+        <McpAddForm onClose={() => setCreating(false)} />
+      ) : creating && tab === 'hook' ? (
+        <HookForm onClose={() => setCreating(false)} />
+      ) : creating ? (
         <NewItemWizard initialKind={creatableKind} onClose={() => setCreating(false)} />
       ) : tab === 'plugins' ? (
         <PluginsPanel plugins={scan?.plugins ?? []} marketplaces={scan?.marketplaces ?? []} />
@@ -114,9 +140,20 @@ export function ToolkitView() {
         <div className="flex min-h-0 flex-1">
           <div className="w-80 shrink-0 overflow-y-auto border-r border-line">
             {visible.map((item) => (
-              <ItemRow key={item.id} item={item} active={item.id === selectedId} onSelect={() => select(item.id)} />
+              <ItemRow key={item.id} item={item} active={item.id === selectedId} health={item.kind === 'mcp' ? healthByName.get(item.name) : undefined} onSelect={() => select(item.id)} />
             ))}
             {visible.length === 0 && <div className="p-3 text-muted">{scan ? 'Nothing here at this scope.' : 'Scanning…'}</div>}
+            {tab === 'mcp' && otherServers.length > 0 && (
+              <div className="border-t border-line p-3">
+                <div className="mb-1 font-mono text-[11px] tracking-wide text-muted uppercase">Connected through your claude.ai account</div>
+                {otherServers.map((entry) => (
+                  <div key={entry.name} className="flex items-baseline gap-2 font-mono text-[12px]" title={entry.target}>
+                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    <span className={`text-[11px] ${HEALTH_TONE[entry.status]}`}>{HEALTH_LABEL[entry.status]}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           {selected ? <ItemDetail key={selected.id} item={selected} all={items} /> : <div className="flex flex-1 items-center justify-center text-muted">Select an item to see its file, scope and conflicts.</div>}
         </div>

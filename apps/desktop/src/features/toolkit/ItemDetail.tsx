@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { toolkitApi } from '../../bridge/tauri.ts';
+import { mcpApi, settingsApi, toolkitApi, type CliScope } from '../../bridge/tauri.ts';
 import type { ItemScope, ToolkitItem, ValidationProblem } from '../../bridge/types.ts';
+import { removeHook } from './hooks.ts';
 import { useToolkit } from './toolkitStore.ts';
 
 const FILE_KINDS = new Set(['agent', 'skill', 'command', 'outputStyle', 'rule']);
@@ -199,7 +200,16 @@ export function ItemDetail({ item, all }: { item: ToolkitItem; all: ToolkitItem[
     });
   const remove = (): Promise<void> =>
     act(async () => {
-      await toolkitApi.remove(item.kind, item.path, projectPath);
+      if (item.kind === 'mcp') {
+        await mcpApi.remove(item.scope as CliScope, item.name, projectPath);
+      } else if (item.kind === 'hook' && item.scope !== 'managed' && item.scope !== 'plugin') {
+        const files = await settingsApi.files(projectPath);
+        const current = files.find((file) => file.scope === item.scope)?.value.hooks;
+        const next = removeHook(current, String(item.detail.event), Number(item.detail.groupIndex), Number(item.detail.handlerIndex));
+        await settingsApi.setValue(item.scope, projectPath, 'hooks', Object.keys(next).length > 0 ? next : null);
+      } else {
+        await toolkitApi.remove(item.kind, item.path, projectPath);
+      }
       select(null);
       await refresh();
     });
@@ -251,7 +261,11 @@ export function ItemDetail({ item, all }: { item: ToolkitItem; all: ToolkitItem[
       {(mode === 'copy' || mode === 'move') && <CopyForm item={item} move={mode === 'move'} onDone={() => setMode('view')} />}
       {mode === 'delete' && (
         <div className="mb-3 rounded border border-bad/60 p-2">
-          Delete {item.kind === 'skill' ? 'the whole skill folder' : 'this file'} permanently?
+          {item.kind === 'mcp'
+            ? `Remove this server from the ${item.scope} scope?`
+            : item.kind === 'hook'
+              ? 'Remove this hook from its settings file?'
+              : `Delete ${item.kind === 'skill' ? 'the whole skill folder' : 'this file'} permanently?`}
           <button type="button" className="ml-3 text-bad" onClick={() => void remove()}>
             Delete
           </button>
@@ -275,8 +289,17 @@ export function ItemDetail({ item, all }: { item: ToolkitItem; all: ToolkitItem[
         </>
       ) : (
         <>
+          {item.editable && mode === 'view' && (
+            <div className="mb-2">
+              <button type="button" className="rounded border border-bad/60 px-3 py-1 text-bad" onClick={() => setMode('delete')}>
+                Remove
+              </button>
+            </div>
+          )}
           <div className="mb-1 text-muted">
-            {item.kind === 'hook' ? 'Defined in this settings file. Hook editing arrives with the settings editor.' : 'Defined in this file. Values of env vars and headers are hidden.'}
+            {item.kind === 'hook'
+              ? 'Defined in the "hooks" setting of this file. To change it, remove it and add a new one, or edit "hooks" in Settings.'
+              : 'Defined in this file. Values of env vars and headers are hidden. To change it, remove it and add it again.'}
           </div>
           <pre className="min-h-0 flex-1 overflow-auto rounded border border-line bg-bg p-2 font-mono text-[12px]">
             {JSON.stringify(item.kind === 'hook' ? item.detail.handler : item.detail, null, 2)}

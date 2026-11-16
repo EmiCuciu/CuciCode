@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { toolkitApi } from '../../bridge/tauri.ts';
+import { mcpApi, toolkitApi, type McpHealth } from '../../bridge/tauri.ts';
 import type { ItemKind, ItemScope, ToolkitItem, ToolkitScan } from '../../bridge/types.ts';
 
 export type ToolkitTab = 'all' | ItemKind | 'plugins';
@@ -14,7 +14,10 @@ interface ToolkitState {
   scope: ScopeFilter;
   search: string;
   selectedId: string | null;
+  health: McpHealth[] | null;
+  checkingHealth: boolean;
 
+  checkHealth: () => Promise<void>;
   load: (projectPath: string | null) => Promise<void>;
   refresh: () => Promise<void>;
   setTab: (tab: ToolkitTab) => void;
@@ -33,10 +36,24 @@ export const useToolkit = create<ToolkitState>((set, get) => ({
   scope: 'all',
   search: '',
   selectedId: null,
+  health: null,
+  checkingHealth: false,
 
+  checkHealth: async () => {
+    set({ checkingHealth: true, error: null });
+    try {
+      set({ health: await mcpApi.health(get().projectPath), checkingHealth: false });
+    } catch (error) {
+      set({ checkingHealth: false, error: String(error) });
+    }
+  },
   load: async (projectPath) => {
+    const changedProject = projectPath !== get().projectPath || get().scan === null;
     set({ projectPath, loading: true, error: null });
     try {
+      if (changedProject) {
+        await toolkitApi.watch(projectPath);
+      }
       const scan = await toolkitApi.scan(projectPath);
       if (get().projectPath === projectPath) {
         set({ scan, loading: false });

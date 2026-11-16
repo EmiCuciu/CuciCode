@@ -26,6 +26,7 @@ ureq = "=3.5.2"
 yaml-rust2 = "=0.13.0"
 walkdir = "=2.5.0"
 keyring = "=4.2.0"
+notify = "=8.2.2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "=0.56.0"

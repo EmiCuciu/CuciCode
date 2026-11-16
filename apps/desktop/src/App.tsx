@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { inDesktopShell, onSidecarEvent } from './bridge/tauri.ts';
 import { ChatView } from './features/chat/ChatView.tsx';
 import { Inspector } from './features/inspector/Inspector.tsx';
-import { LeftRail, sectionPhase, type RailSection } from './features/layout/LeftRail.tsx';
+import { LeftRail, sectionPhase } from './features/layout/LeftRail.tsx';
 import { TopBar } from './features/layout/TopBar.tsx';
 import { ProjectsSidebar } from './features/projects/ProjectsSidebar.tsx';
 import { SettingsView } from './features/settings/SettingsView.tsx';
 import { ToolkitView } from './features/toolkit/ToolkitView.tsx';
+import { useNav } from './state/nav.ts';
 import { selectChat, useApp } from './state/store.ts';
 
 type Theme = 'dark' | 'light';
@@ -17,7 +18,8 @@ function storedTheme(): Theme {
 }
 
 export function App() {
-  const [section, setSection] = useState<RailSection>('projects');
+  const section = useNav((state) => state.section);
+  const setSection = useNav((state) => state.go);
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const activeId = useApp((state) => state.activeProjectId);
   const project = useApp((state) => state.projects.find((item) => item.id === state.activeProjectId) ?? null);

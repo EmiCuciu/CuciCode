@@ -142,6 +142,12 @@ async fn secrets_delete(name: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+fn toolkit_watch(app: AppHandle, watcher: State<'_, toolkit::watch::ToolkitWatcher>, project_path: Option<PathBuf>) -> AppResult<()> {
+    let config = SettingsLocations::system()?.config_dir;
+    watcher.watch(app, &config, project_path.as_deref())
+}
+
+#[tauri::command]
 async fn toolkit_read(path: PathBuf, project_path: Option<PathBuf>) -> AppResult<String> {
     blocking(move || toolkit::edit::read(&toolkit::system_roots(project_path)?, &path)).await
 }
@@ -199,6 +205,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(Sidecar::new(app.handle().clone()));
+            app.manage(toolkit::watch::ToolkitWatcher::default());
             let models = app.path().app_data_dir()?.join("models");
             app.manage(Arc::new(Voice::new(models)));
             Ok(())
@@ -214,6 +221,7 @@ pub fn run() {
             cucicode_project_ui_get,
             cucicode_project_ui_set,
             toolkit_scan,
+            toolkit_watch,
             mcp_health,
             mcp_add,
             mcp_remove,

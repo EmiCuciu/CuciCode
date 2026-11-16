@@ -53,6 +53,8 @@ export const projectsApi = {
 
 export const toolkitApi = {
   scan: (projectPath: string | null): Promise<ToolkitScan> => invoke('toolkit_scan', { projectPath }),
+  watch: (projectPath: string | null): Promise<void> => invoke('toolkit_watch', { projectPath }),
+  onChanged: (handler: () => void): Promise<UnlistenFn> => listen('toolkit://changed', handler),
   read: (path: string, projectPath: string | null): Promise<string> => invoke('toolkit_read', { path, projectPath }),
   write: (path: string, content: string, projectPath: string | null): Promise<void> => invoke('toolkit_write', { path, content, projectPath }),
   create: (kind: ItemKind, scope: ItemScope, name: string, content: string, projectPath: string | null): Promise<string> =>
@@ -61,6 +63,35 @@ export const toolkitApi = {
   copy: (kind: ItemKind, path: string, targetScope: ItemScope, newName: string, removeSource: boolean, projectPath: string | null): Promise<string> =>
     invoke('toolkit_copy', { kind, path, targetScope, newName, removeSource, projectPath }),
   validate: (kind: ItemKind, content: string): Promise<ValidationProblem[]> => invoke('toolkit_validate', { kind, content }),
+};
+
+export type CliScope = 'user' | 'project' | 'local';
+export type PluginAction = 'install' | 'uninstall' | 'enable' | 'disable' | 'update';
+
+export interface McpHealth {
+  name: string;
+  target: string;
+  status: 'connected' | 'needsAuth' | 'failed' | 'unknown';
+  detail: string;
+}
+
+export const mcpApi = {
+  health: (projectPath: string | null): Promise<McpHealth[]> => invoke('mcp_health', { projectPath }),
+  add: (scope: CliScope, name: string, config: Record<string, unknown>, projectPath: string | null): Promise<void> => invoke('mcp_add', { scope, name, config, projectPath }),
+  remove: (scope: CliScope, name: string, projectPath: string | null): Promise<void> => invoke('mcp_remove', { scope, name, projectPath }),
+};
+
+export const pluginApi = {
+  act: (action: PluginAction, plugin: string, scope: CliScope, projectPath: string | null): Promise<string> => invoke('plugin_action', { action, plugin, scope, projectPath }),
+  addMarketplace: (source: string, scope: CliScope, projectPath: string | null): Promise<string> => invoke('marketplace_add', { source, scope, projectPath }),
+  updateMarketplace: (name: string): Promise<string> => invoke('marketplace_update', { name }),
+  removeMarketplace: (name: string): Promise<string> => invoke('marketplace_remove', { name }),
+};
+
+export const secretsApi = {
+  names: (): Promise<string[]> => invoke('secrets_names'),
+  set: (name: string, value: string): Promise<void> => invoke('secrets_set', { name, value }),
+  remove: (name: string): Promise<void> => invoke('secrets_delete', { name }),
 };
 
 export interface VoiceStatus {

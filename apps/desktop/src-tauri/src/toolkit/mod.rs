@@ -3,6 +3,7 @@ pub mod edit;
 mod embedded;
 mod files;
 pub mod validate;
+pub mod watch;
 pub mod frontmatter;
 pub mod model;
 mod plugins;

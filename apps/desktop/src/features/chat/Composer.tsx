@@ -1,7 +1,41 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import type { Attachment, Effort, PermissionMode } from '@cucicode/protocol';
+import { useNav } from '../../state/nav.ts';
 import { useApp, type ChatState } from '../../state/store.ts';
+import { useToolkit, type ToolkitTab } from '../toolkit/toolkitStore.ts';
+import { buildMenu, filterMenu, slashQuery, type SlashEntry } from './slashCommands.ts';
 import { useVoice, type VoiceControls } from './useVoice.ts';
+
+const MENU_SIZE = 10;
+const NEW_COMMAND: SlashEntry = { name: 'New command…', description: 'Create your own slash command (opens Toolkit → Commands)', argumentHint: '', source: 'CuciCode', native: 'newCommand' };
+
+function SlashMenu({ entries, active, onChoose, onHover }: { entries: SlashEntry[]; active: number; onChoose: (entry: SlashEntry) => void; onHover: (index: number) => void }) {
+  return (
+    <div className="mb-2 max-h-72 overflow-y-auto rounded border border-line bg-raised" role="listbox">
+      {entries.map((entry, index) => (
+        <button
+          key={entry.name}
+          type="button"
+          role="option"
+          aria-selected={index === active}
+          className={`block w-full px-2 py-1 text-left ${index === active ? 'bg-accent/15' : ''}`}
+          onMouseEnter={() => onHover(index)}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            onChoose(entry);
+          }}
+        >
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-[12px] text-accent">{entry.native === 'newCommand' ? entry.name : `/${entry.name}`}</span>
+            {entry.argumentHint && <span className="font-mono text-[11px] text-muted">{entry.argumentHint}</span>}
+            <span className="min-w-0 flex-1 truncate text-muted">{entry.description}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted">{entry.source}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const PERMISSION_MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'];
 const DEFAULT_EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -70,6 +104,59 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
 
   const voice = useVoice((transcript) => setText((current) => (current.trim().length > 0 ? `${current.trimEnd()} ${transcript}` : transcript)));
 
+  const modelSelect = useRef<HTMLSelectElement>(null);
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const toolkitItems = useToolkit((state) => state.scan?.items);
+  const query = menuDismissed ? null : slashQuery(text);
+  const menu = useMemo(() => {
+    if (query === null) {
+      return [];
+    }
+    return [...filterMenu(buildMenu(chat?.info?.commands ?? null, toolkitItems ?? []), query).slice(0, MENU_SIZE), NEW_COMMAND];
+  }, [query, chat?.info?.commands, toolkitItems]);
+  const menuOpen = query !== null;
+
+  useEffect(() => {
+    if (menuOpen && useToolkit.getState().scan === null) {
+      const path = useApp.getState().projects.find((project) => project.id === projectId)?.path ?? null;
+      void useToolkit.getState().load(path);
+    }
+  }, [menuOpen, projectId]);
+
+  const openToolkit = (tab: ToolkitTab): void => {
+    useToolkit.getState().setTab(tab);
+    useNav.getState().go('toolkit');
+  };
+  const choose = (entry: SlashEntry): void => {
+    setMenuIndex(0);
+    switch (entry.native) {
+      case null:
+        setText(`/${entry.name} `);
+        return;
+      case 'model':
+        setText('');
+        modelSelect.current?.focus();
+        return;
+      case 'toolkit:agent':
+        openToolkit('agent');
+        break;
+      case 'toolkit:mcp':
+        openToolkit('mcp');
+        break;
+      case 'toolkit:hook':
+        openToolkit('hook');
+        break;
+      case 'toolkit:plugins':
+        openToolkit('plugins');
+        break;
+      case 'newCommand':
+        openToolkit('command');
+        break;
+    }
+    setText('');
+  };
+
   const running = chat !== null && chat.timeline.runState !== 'idle';
   const models = chat?.info?.models ?? FALLBACK_MODELS;
   const activeModel = chat?.info?.models.find((model) => model.value === chat.model);
@@ -89,6 +176,27 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
     setAttachments([]);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (menuOpen && menu.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        setMenuIndex((menuIndex + step + menu.length) % menu.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        const entry = menu[Math.min(menuIndex, menu.length - 1)];
+        if (entry) {
+          choose(entry);
+        }
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuDismissed(true);
+        return;
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       submit(false);
@@ -122,17 +230,22 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
           ))}
         </div>
       )}
+      {menuOpen && <SlashMenu entries={menu} active={Math.min(menuIndex, menu.length - 1)} onChoose={choose} onHover={setMenuIndex} />}
       <textarea
         value={text}
         rows={3}
         placeholder={running ? 'Agent is running — Queue adds your message after this turn' : 'Message Claude Code  (Enter to send, Shift+Enter for a new line)'}
         className="w-full resize-none rounded border border-line bg-bg p-2 text-fg outline-none focus:border-accent"
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          setText(event.target.value);
+          setMenuDismissed(false);
+          setMenuIndex(0);
+        }}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
       />
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <select aria-label="Model" className={selectClass} value={chat?.model ?? ''} onChange={(event) => void setModel(projectId, event.target.value || undefined)}>
+        <select ref={modelSelect} aria-label="Model" className={selectClass} value={chat?.model ?? ''} onChange={(event) => void setModel(projectId, event.target.value || undefined)}>
           <option value="">model: default</option>
           {models.map((model) => (
             <option key={model.value} value={model.value}>

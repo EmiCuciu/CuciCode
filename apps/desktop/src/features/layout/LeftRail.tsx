@@ -1,4 +1,4 @@
-export type RailSection = 'projects' | 'activity' | 'toolkit' | 'usage' | 'concepts' | 'settings';
+import type { RailSection } from '../../state/nav.ts';
 
 const SECTIONS: { id: RailSection; label: string; phase: number }[] = [
   { id: 'projects', label: 'Projects', phase: 1 },
