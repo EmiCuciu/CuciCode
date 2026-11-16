@@ -138,6 +138,18 @@ export function sourceOf(shared: unknown, local: unknown, section: keyof Workflo
   return has(local) ? 'local' : has(shared) ? 'project' : 'default';
 }
 
+/**
+ * What the chat switches to for a mode. Brainstorm and Plan are the planner role, so they
+ * always use the planner's model and effort; Plan also uses Claude Code's plan permission mode.
+ */
+export function modeRoute(config: WorkflowConfig, mode: 'chat' | 'brainstorm' | 'plan'): { model: string | undefined; effort: string | undefined; permissionMode: 'default' | 'plan' } {
+  if (mode === 'chat') {
+    return { ...sessionRoute(config, 'main'), permissionMode: 'default' };
+  }
+  const planner = config.routing.roles.planner;
+  return { model: planner.model || undefined, effort: planner.effort || undefined, permissionMode: mode === 'plan' ? 'plan' : 'default' };
+}
+
 /** The model and effort a session should start with for a role, or nothing when routing is automatic. */
 export function sessionRoute(config: WorkflowConfig, role: Role): { model: string | undefined; effort: string | undefined } {
   if (config.routing.mode === 'auto') {

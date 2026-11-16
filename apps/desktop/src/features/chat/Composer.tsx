@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import type { Attachment, Effort, PermissionMode } from '@cucicode/protocol';
 import { useNav } from '../../state/nav.ts';
-import { useApp, type ChatState } from '../../state/store.ts';
+import { useApp, type ChatMode, type ChatState } from '../../state/store.ts';
+import { defaultConfig, modeRoute } from '../workflow/config.ts';
+import { useWorkflow } from '../workflow/workflowStore.ts';
 import { useToolkit, type ToolkitTab } from '../toolkit/toolkitStore.ts';
 import { buildMenu, filterMenu, slashQuery, type SlashEntry } from './slashCommands.ts';
 import { useVoice, type VoiceControls } from './useVoice.ts';
+
+const MODES: { id: ChatMode; label: string; hint: string }[] = [
+  { id: 'chat', label: 'Chat', hint: 'Normal conversation with the main thread' },
+  { id: 'brainstorm', label: 'Brainstorm', hint: 'Explore an idea with the planner model before deciding; your first message starts /cucicode:brainstorm' },
+  { id: 'plan', label: 'Plan', hint: 'Planner model in plan mode: Claude researches and proposes a plan, and changes nothing until you approve' },
+];
 
 const MENU_SIZE = 10;
 const NEW_COMMAND: SlashEntry = { name: 'New command…', description: 'Create your own slash command (opens Toolkit → Commands)', argumentHint: '', source: 'CuciCode', native: 'newCommand' };
@@ -92,7 +100,7 @@ function VoiceButton({ voice }: { voice: VoiceControls }) {
   }
 }
 
-export function Composer({ projectId, chat }: { projectId: string; chat: ChatState | null }) {
+export function Composer({ projectId, chatId, chat }: { projectId: string; chatId: string; chat: ChatState | null }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -167,11 +175,25 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
     const added = await Promise.all(Array.from(files, toAttachment));
     setAttachments((current) => [...current, ...added]);
   };
+  const isMain = chatId === projectId;
+  const mode: ChatMode = chat?.mode ?? 'chat';
+  const config = useWorkflow((state) => state.projects[projectId]?.config);
+  const applyMode = useApp((state) => state.applyMode);
+  const [modeIsFresh, setModeIsFresh] = useState(false);
+  const changeMode = (next: ChatMode): void => {
+    const route = modeRoute(config ?? defaultConfig(), next);
+    void applyMode(chatId, next, { model: route.model, effort: route.effort as Effort | undefined, permissionMode: route.permissionMode });
+    setModeIsFresh(next === 'brainstorm');
+  };
+
   const submit = (interruptFirst: boolean): void => {
     if (!canSend) {
       return;
     }
-    void send(projectId, text.trim(), attachments, interruptFirst);
+    const trimmed = text.trim();
+    const outgoing = mode === 'brainstorm' && modeIsFresh && !trimmed.startsWith('/') ? `/cucicode:brainstorm ${trimmed}` : trimmed;
+    void send(chatId, outgoing, attachments, interruptFirst);
+    setModeIsFresh(false);
     setText('');
     setAttachments([]);
   };
@@ -245,7 +267,23 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
         onPaste={onPaste}
       />
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <select ref={modelSelect} aria-label="Model" className={selectClass} value={chat?.model ?? ''} onChange={(event) => void setModel(projectId, event.target.value || undefined)}>
+        {isMain && (
+          <div className="flex overflow-hidden rounded border border-line" role="group" aria-label="Mode">
+            {MODES.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                aria-pressed={mode === entry.id}
+                title={entry.hint}
+                className={`px-2 py-1 text-[12px] ${mode === entry.id ? 'bg-accent/20 text-accent' : 'text-muted hover:text-fg'}`}
+                onClick={() => changeMode(entry.id)}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <select ref={modelSelect} aria-label="Model" className={selectClass} value={chat?.model ?? ''} onChange={(event) => void setModel(chatId, event.target.value || undefined)}>
           <option value="">model: default</option>
           {models.map((model) => (
             <option key={model.value} value={model.value}>
@@ -257,9 +295,8 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
           aria-label="Effort"
           className={selectClass}
           value={chat?.effort ?? ''}
-          disabled={chat?.open === true}
-          title={chat?.open === true ? 'Effort is fixed once the session has started; start a new session to change it' : undefined}
-          onChange={(event) => setEffort(projectId, (event.target.value || undefined) as Effort | undefined)}
+          title="Changing effort restarts the session process; the conversation is resumed on your next message"
+          onChange={(event) => void setEffort(chatId, (event.target.value || undefined) as Effort | undefined)}
         >
           <option value="">effort: default</option>
           {efforts.map((effort) => (
@@ -272,7 +309,7 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
           aria-label="Permission mode"
           className={selectClass}
           value={chat?.permissionMode ?? 'default'}
-          onChange={(event) => void setPermissionMode(projectId, event.target.value as PermissionMode)}
+          onChange={(event) => void setPermissionMode(chatId, event.target.value as PermissionMode)}
         >
           {PERMISSION_MODES.map((mode) => (
             <option key={mode} value={mode}>
@@ -288,7 +325,7 @@ export function Composer({ projectId, chat }: { projectId: string; chat: ChatSta
         <div className="flex-1" />
         {running ? (
           <>
-            <button type="button" className="rounded border border-bad/60 px-3 py-1 text-bad hover:bg-bad/10" onClick={() => void interrupt(projectId)}>
+            <button type="button" className="rounded border border-bad/60 px-3 py-1 text-bad hover:bg-bad/10" onClick={() => void interrupt(chatId)}>
               Stop
             </button>
             <button type="button" disabled={!canSend} className="rounded border border-line px-3 py-1 hover:bg-raised disabled:opacity-40" onClick={() => submit(true)}>

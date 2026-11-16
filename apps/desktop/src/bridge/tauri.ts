@@ -51,6 +51,83 @@ export const projectsApi = {
   },
 };
 
+export interface Story {
+  id: string;
+  feature: string;
+  title: string;
+  status: string;
+  acceptanceCriteria: string[];
+  ownedFiles: string[];
+  dependsOn: string[];
+  worker: string | null;
+  branch: string | null;
+  review: string | null;
+  path: string;
+  archived: boolean;
+  body: string;
+  worktreeStatus: string | null;
+  problem: string | null;
+}
+
+export interface Worktree {
+  storyId: string;
+  path: string;
+  branch: string;
+  head: string;
+  dirty: boolean;
+  commitsAhead: number;
+  changedFiles: number;
+}
+
+export interface FileStat {
+  path: string;
+  added: number | null;
+  removed: number | null;
+}
+
+export interface StoryDiff {
+  base: string;
+  files: FileStat[];
+  patch: string;
+  truncated: boolean;
+}
+
+export interface CheckResult {
+  command: string;
+  passed: boolean;
+  exitCode: number | null;
+  output: string;
+  durationMs: number;
+}
+
+export interface CheckRun {
+  passed: boolean;
+  results: CheckResult[];
+}
+
+export interface FinishedStory {
+  commit: string;
+  archived: boolean;
+  pushed: boolean;
+  warnings: string[];
+}
+
+export const workflowApi = {
+  settings: (projectPath: string): Promise<{ shared: Record<string, unknown>; local: Record<string, unknown> }> => invoke('cucicode_settings_get', { projectPath }),
+  setSetting: (projectPath: string, local: boolean, key: string, value: unknown): Promise<void> => invoke('cucicode_settings_set', { projectPath, local, key, value: value ?? null }),
+  state: (projectPath: string): Promise<Record<string, unknown>> => invoke('pipeline_state_get', { projectPath }),
+  saveState: (projectPath: string, state: Record<string, unknown>): Promise<void> => invoke('pipeline_state_set', { projectPath, state }),
+  stories: (projectPath: string): Promise<Story[]> => invoke('stories_list', { projectPath }),
+  worktrees: (projectPath: string): Promise<Worktree[]> => invoke('worktree_list', { projectPath }),
+  addWorktree: (projectPath: string, storyId: string): Promise<Worktree> => invoke('worktree_add', { projectPath, storyId }),
+  removeWorktree: (projectPath: string, storyId: string, deleteBranch: boolean): Promise<void> => invoke('worktree_remove', { projectPath, storyId, deleteBranch }),
+  diff: (projectPath: string, storyId: string): Promise<StoryDiff> => invoke('story_diff', { projectPath, storyId }),
+  finish: (projectPath: string, storyId: string, push: boolean): Promise<FinishedStory> => invoke('story_finish', { projectPath, storyId, push }),
+  checkCommands: (projectPath: string): Promise<string[]> => invoke('checks_commands', { projectPath }),
+  runChecks: (projectPath: string, storyId: string | null): Promise<CheckRun> => invoke('checks_run', { projectPath, storyId }),
+  pluginSource: (): Promise<string> => invoke('plugin_source'),
+};
+
 export const toolkitApi = {
   scan: (projectPath: string | null): Promise<ToolkitScan> => invoke('toolkit_scan', { projectPath }),
   watch: (projectPath: string | null): Promise<void> => invoke('toolkit_watch', { projectPath }),

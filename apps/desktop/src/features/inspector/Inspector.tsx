@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { SessionSummary } from '@cucicode/protocol';
 import { selectChat, useApp } from '../../state/store.ts';
 import { totalTokens } from '../../state/timeline.ts';
+import { PipelinePanel } from '../workflow/PipelinePanel.tsx';
+import { WorktreesPanel } from '../workflow/WorktreesPanel.tsx';
 
 const NO_SESSIONS: SessionSummary[] = [];
 
@@ -129,7 +131,7 @@ function Sessions({ projectId }: { projectId: string }) {
   const needle = search.trim().toLowerCase();
   const visible = sessions.filter((session) => `${session.title} ${session.firstPrompt ?? ''}`.toLowerCase().includes(needle));
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-64 flex-1 flex-col">
       <div className="flex items-center gap-2 p-3 pb-2">
         <span className="font-mono text-[11px] tracking-wide text-muted uppercase">Sessions ({sessions.length})</span>
         <span className="flex-1" />
@@ -155,7 +157,9 @@ function Sessions({ projectId }: { projectId: string }) {
 
 export function Inspector({ projectId }: { projectId: string }) {
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-line bg-panel">
+    <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-panel">
+      <PipelinePanel projectId={projectId} />
+      <WorktreesPanel projectId={projectId} />
       <ContextMeter projectId={projectId} />
       <LastTurn projectId={projectId} />
       <Sessions projectId={projectId} />

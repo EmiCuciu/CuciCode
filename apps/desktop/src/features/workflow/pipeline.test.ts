@@ -247,3 +247,24 @@ describe('config', () => {
     expect(sessionRoute(predefined, 'worker')).toEqual({ model: 'sonnet', effort: undefined });
   });
 });
+
+describe('stalled stages and modes', () => {
+  it('a main turn that stops early leaves the stage waiting, and it can be run again', () => {
+    const cfg = config();
+    const planning = step(newRun(), START, cfg).run;
+    const stopped = step(planning, { type: 'main_turn_failed', error: 'interrupted' }, cfg);
+    expect(stopped.run).toMatchObject({ stage: 'plan', status: 'waiting', awaiting: null });
+    expect(stopped.effects).toEqual([]);
+    const again = step(stopped.run, { type: 'retry_stage' }, cfg);
+    expect(again.run.status).toBe('working');
+    expect(types(again.effects)).toEqual(['send_main']);
+    expect(step(planning, { type: 'retry_stage' }, cfg).effects).toEqual([]);
+  });
+
+  it('brainstorm and plan modes use the planner route, and plan mode uses the plan permission mode', async () => {
+    const { modeRoute } = await import('./config.ts');
+    expect(modeRoute(defaultConfig(), 'chat')).toEqual({ model: undefined, effort: undefined, permissionMode: 'default' });
+    expect(modeRoute(defaultConfig(), 'brainstorm')).toEqual({ model: 'opus', effort: 'high', permissionMode: 'default' });
+    expect(modeRoute(defaultConfig(), 'plan')).toEqual({ model: 'opus', effort: 'high', permissionMode: 'plan' });
+  });
+});

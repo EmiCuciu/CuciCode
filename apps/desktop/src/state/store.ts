@@ -12,9 +12,17 @@ import { projectsApi, settingsApi, sidecar } from '../bridge/tauri.ts';
 import type { Project } from '../bridge/types.ts';
 import { applyEvent, emptyTimeline, fromHistory, type TimelineState } from './timeline.ts';
 
+export type ChatMode = 'chat' | 'brainstorm' | 'plan';
+
+/** Called for every timeline event of every chat, after the store has applied it. */
+export const chatListeners = new Set<(chatId: string, event: TimelineEvent) => void>();
+
 export interface ChatState {
   timeline: TimelineState;
   open: boolean;
+  /** Set for chats that do not run in the project folder itself, such as a story's worktree. */
+  cwd: string | null;
+  mode: ChatMode;
   resumeSessionId: string | null;
   info: ChatInfo | null;
   model: string | undefined;
@@ -25,6 +33,8 @@ export interface ChatState {
 const newChat = (): ChatState => ({
   timeline: emptyTimeline,
   open: false,
+  cwd: null,
+  mode: 'chat',
   resumeSessionId: null,
   info: null,
   model: undefined,
@@ -53,7 +63,10 @@ interface AppState {
   interrupt: (projectId: string) => Promise<void>;
   respondPermission: (requestId: string, behavior: 'allow' | 'deny', remember: boolean) => Promise<void>;
   setModel: (projectId: string, model: string | undefined) => Promise<void>;
-  setEffort: (projectId: string, effort: Effort | undefined) => void;
+  setEffort: (projectId: string, effort: Effort | undefined) => Promise<void>;
+  closeChat: (chatId: string) => Promise<void>;
+  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode'>>) => void;
+  applyMode: (chatId: string, mode: ChatMode, route: { model: string | undefined; effort: Effort | undefined; permissionMode: PermissionMode }) => Promise<void>;
   setPermissionMode: (projectId: string, mode: PermissionMode) => Promise<void>;
   toggleCategory: (projectId: string, category: EventCategory) => Promise<void>;
   receive: (chatId: string, event: TimelineEvent) => void;
@@ -87,6 +100,18 @@ export const useApp = create<AppState>((set, get) => {
       await sidecar('chat.close', { chatId: id });
     }
   };
+  /**
+   * Effort can only be set when a session starts. This ends the running process and
+   * remembers the session, so the next message resumes it with the new setting.
+   */
+  const restartLater = async (id: string): Promise<void> => {
+    const current = chat(id);
+    if (!current.open) {
+      return;
+    }
+    await sidecar('chat.close', { chatId: id });
+    patchChat(id, { open: false, info: null, resumeSessionId: current.timeline.init?.sessionId ?? current.resumeSessionId });
+  };
   const ensureOpen = async (id: string): Promise<void> => {
     const current = chat(id);
     if (current.open) {
@@ -94,7 +119,7 @@ export const useApp = create<AppState>((set, get) => {
     }
     await sidecar('chat.open', {
       chatId: id,
-      cwd: project(id).path,
+      cwd: current.cwd ?? project(id).path,
       resume: current.resumeSessionId ?? undefined,
       model: current.model,
       effort: current.effort,
@@ -210,7 +235,33 @@ export const useApp = create<AppState>((set, get) => {
         }
       }),
 
-    setEffort: (projectId, effort) => patchChat(projectId, { effort }),
+    setEffort: (projectId, effort) =>
+      guard(async () => {
+        if (chat(projectId).effort !== effort) {
+          await restartLater(projectId);
+          patchChat(projectId, { effort });
+        }
+      }),
+
+    closeChat: (chatId) => guard(() => restartLater(chatId)),
+
+    configureChat: (chatId, patch) => patchChat(chatId, patch),
+
+    applyMode: (chatId, mode, route) =>
+      guard(async () => {
+        const current = chat(chatId);
+        if (current.effort !== route.effort) {
+          await restartLater(chatId);
+        } else if (current.open) {
+          if (current.model !== route.model) {
+            await sidecar('chat.setModel', { chatId, model: route.model });
+          }
+          if (current.permissionMode !== route.permissionMode) {
+            await sidecar('chat.setPermissionMode', { chatId, mode: route.permissionMode });
+          }
+        }
+        patchChat(chatId, { mode, ...route });
+      }),
 
     setPermissionMode: (projectId, mode) =>
       guard(async () => {
@@ -232,7 +283,12 @@ export const useApp = create<AppState>((set, get) => {
       patchChat(chatId, { timeline: applyEvent(chat(chatId).timeline, event) });
       if (event.kind === 'result') {
         void get().refreshInfo(chatId);
-        void get().loadSessions(chatId);
+        if (get().projects.some((item) => item.id === chatId)) {
+          void get().loadSessions(chatId);
+        }
+      }
+      for (const listener of chatListeners) {
+        listener(chatId, event);
       }
     },
 

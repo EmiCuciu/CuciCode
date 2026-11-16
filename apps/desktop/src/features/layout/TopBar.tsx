@@ -1,5 +1,6 @@
 import type { Project } from '../../bridge/types.ts';
 import type { ChatState } from '../../state/store.ts';
+import { Inbox } from '../workflow/Inbox.tsx';
 
 function formatReset(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -32,6 +33,7 @@ export function TopBar({ project, chat, theme, onToggleTheme }: { project: Proje
       <span className="truncate">{project?.name ?? 'no project'}</span>
       {project?.branch && <span className="font-mono text-[11px] text-muted">{project.branch}</span>}
       <div className="flex-1" />
+      <Inbox />
       <UsageIndicator chat={chat} />
       <button type="button" className="rounded border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg" onClick={onToggleTheme}>
         {theme === 'dark' ? 'Light' : 'Dark'}
