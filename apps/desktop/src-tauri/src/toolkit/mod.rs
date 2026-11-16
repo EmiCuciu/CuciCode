@@ -151,6 +151,23 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    /// Run with `cargo test real_machine -- --ignored --nocapture` to see what the scanner finds here.
+    #[test]
+    #[ignore = "reads the real Claude Code configuration of this machine"]
+    fn real_machine_scan_prints_a_summary() {
+        let project = std::env::var_os("CUCICODE_SCAN_PROJECT").map(PathBuf::from);
+        let scan = scan(project.as_deref()).unwrap();
+        let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        for item in &scan.items {
+            *counts.entry(format!("{}/{:?}", item.kind.label(), item.scope)).or_default() += 1;
+        }
+        println!("items: {counts:?}");
+        println!("plugins: {}, marketplaces: {}", scan.plugins.len(), scan.marketplaces.len());
+        for item in scan.items.iter().filter(|item| item.problem.is_some() || item.conflict.is_some()) {
+            println!("  {} {} problem={:?} conflict={}", item.kind.label(), item.name, item.problem, item.conflict.is_some());
+        }
+    }
+
     #[test]
     fn scans_every_scope_and_reports_conflicts() {
         let root = std::env::temp_dir().join(format!("cucicode-scan-{}", std::process::id()));

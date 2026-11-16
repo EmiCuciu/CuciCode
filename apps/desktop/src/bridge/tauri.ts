@@ -8,7 +8,7 @@ import type {
   SessionSummary,
   TimelineEvent,
 } from '@cucicode/protocol';
-import type { Project, ProjectUiSettings, ResolvedSetting } from './types.ts';
+import type { ItemKind, ItemScope, Project, ProjectUiSettings, ResolvedSetting, ToolkitScan, ValidationProblem } from './types.ts';
 
 export const SIDECAR_EVENT = 'sidecar://event';
 
@@ -49,6 +49,18 @@ export const projectsApi = {
     const selected = await open({ directory: true, multiple: false, title: 'Add project' });
     return typeof selected === 'string' ? selected : null;
   },
+};
+
+export const toolkitApi = {
+  scan: (projectPath: string | null): Promise<ToolkitScan> => invoke('toolkit_scan', { projectPath }),
+  read: (path: string, projectPath: string | null): Promise<string> => invoke('toolkit_read', { path, projectPath }),
+  write: (path: string, content: string, projectPath: string | null): Promise<void> => invoke('toolkit_write', { path, content, projectPath }),
+  create: (kind: ItemKind, scope: ItemScope, name: string, content: string, projectPath: string | null): Promise<string> =>
+    invoke('toolkit_create', { kind, scope, name, content, projectPath }),
+  remove: (kind: ItemKind, path: string, projectPath: string | null): Promise<void> => invoke('toolkit_delete', { kind, path, projectPath }),
+  copy: (kind: ItemKind, path: string, targetScope: ItemScope, newName: string, removeSource: boolean, projectPath: string | null): Promise<string> =>
+    invoke('toolkit_copy', { kind, path, targetScope, newName, removeSource, projectPath }),
+  validate: (kind: ItemKind, content: string): Promise<ValidationProblem[]> => invoke('toolkit_validate', { kind, content }),
 };
 
 export interface VoiceStatus {

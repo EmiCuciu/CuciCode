@@ -6,6 +6,7 @@ import { LeftRail, sectionPhase, type RailSection } from './features/layout/Left
 import { TopBar } from './features/layout/TopBar.tsx';
 import { ProjectsSidebar } from './features/projects/ProjectsSidebar.tsx';
 import { SettingsView } from './features/settings/SettingsView.tsx';
+import { ToolkitView } from './features/toolkit/ToolkitView.tsx';
 import { selectChat, useApp } from './state/store.ts';
 
 type Theme = 'dark' | 'light';
@@ -70,7 +71,8 @@ export function App() {
           </>
         )}
         {section === 'settings' && <SettingsView project={project} />}
-        {section !== 'projects' && section !== 'settings' && (
+        {section === 'toolkit' && <ToolkitView />}
+        {section !== 'projects' && section !== 'settings' && section !== 'toolkit' && (
           <div className="flex flex-1 items-center justify-center text-muted">This section arrives in Phase {sectionPhase(section)}.</div>
         )}
       </div>
