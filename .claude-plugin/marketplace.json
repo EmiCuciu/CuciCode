@@ -1,0 +1,14 @@
+{
+  "name": "cucicode",
+  "description": "The CuciCode workflow: pipeline roles, reviewers and Code Rules for Claude Code",
+  "owner": {
+    "name": "CuciCode"
+  },
+  "plugins": [
+    {
+      "name": "cucicode",
+      "source": "./plugin/cucicode",
+      "description": "Roles (planner, story-writer, explorer, worker, reviewers) and pipeline stages (brainstorm, plan, stories, build, review) as Claude Code agents and skills"
+    }
+  ]
+}

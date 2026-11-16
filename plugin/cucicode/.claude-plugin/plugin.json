@@ -1,0 +1,10 @@
+{
+  "name": "cucicode",
+  "version": "0.1.0",
+  "description": "The CuciCode agentic workflow: pipeline roles, reviewers and protected-path enforcement",
+  "author": {
+    "name": "CuciCode"
+  },
+  "license": "MIT",
+  "keywords": ["workflow", "pipeline", "stories", "review"]
+}

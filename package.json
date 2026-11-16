@@ -13,8 +13,9 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:plugin",
     "build:sidecar": "npm run build --workspace sidecar",
-    "dev": "npm run tauri dev --workspace apps/desktop"
+    "dev": "npm run tauri dev --workspace apps/desktop",
+    "test:plugin": "node --test plugin/cucicode/hooks/paths.test.mjs"
   }
 }
