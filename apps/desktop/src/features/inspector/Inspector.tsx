@@ -36,7 +36,6 @@ function ContextMeter({ projectId }: { projectId: string }) {
           Clear
         </button>
       </div>
-      <div className="mt-2 text-[11px] text-muted">Compact summarises the conversation and keeps going. Clear starts from an empty context.</div>
     </Section>
   );
 }
