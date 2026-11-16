@@ -9,7 +9,7 @@ use crate::jsonfile::{read_optional, write_atomic};
 use crate::paths::{claude_config_dir, CUCICODE_DIR};
 
 pub const SETTINGS_VERSION: u64 = 1;
-const LOCAL_IGNORE_ENTRY: &str = ".claude/cucicode/settings.local.json";
+const LOCAL_IGNORE_ENTRY: &str = ".claude/cucicode/*.local.json";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +24,74 @@ pub fn user_settings_path() -> AppResult<PathBuf> {
 
 pub fn project_local_settings_path(project_path: &Path) -> PathBuf {
     project_path.join(".claude").join(CUCICODE_DIR).join("settings.local.json")
+}
+
+pub fn project_shared_settings_path(project_path: &Path) -> PathBuf {
+    project_path.join(".claude").join(CUCICODE_DIR).join("settings.json")
+}
+
+pub fn pipeline_state_path(project_path: &Path) -> PathBuf {
+    project_path.join(".claude").join(CUCICODE_DIR).join("pipeline.local.json")
+}
+
+/// The project's shared and personal CuciCode settings, as stored.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProjectSettings {
+    pub shared: Map<String, Value>,
+    pub local: Map<String, Value>,
+}
+
+pub fn read_project_settings(project_path: &Path) -> AppResult<ProjectSettings> {
+    Ok(ProjectSettings {
+        shared: load_document(&project_shared_settings_path(project_path))?,
+        local: load_document(&project_local_settings_path(project_path))?,
+    })
+}
+
+/// Sets or removes one top-level section (for example "pipeline" or "git") in the shared or personal file.
+pub fn set_project_setting(project_path: &Path, local: bool, key: &str, value: Option<Value>) -> AppResult<()> {
+    if key.is_empty() || key == "version" {
+        return Err(AppError::Invalid("a settings section name is required".into()));
+    }
+    let path = if local { project_local_settings_path(project_path) } else { project_shared_settings_path(project_path) };
+    let mut document = load_document(&path)?;
+    match value {
+        Some(value) => {
+            document.insert(key.to_owned(), value);
+        }
+        None => {
+            document.shift_remove(key);
+        }
+    }
+    save_document(&path, document)?;
+    if local {
+        ensure_git_ignored(project_path)?;
+    }
+    Ok(())
+}
+
+/// Looks a value up by path, preferring the personal file over the shared one.
+pub fn effective_setting(settings: &ProjectSettings, path: &[&str]) -> Option<Value> {
+    let lookup = |document: &Map<String, Value>| {
+        let mut current = document.get(*path.first()?)?;
+        for key in &path[1..] {
+            current = current.get(key)?;
+        }
+        Some(current.clone())
+    };
+    lookup(&settings.local).or_else(|| lookup(&settings.shared))
+}
+
+pub fn read_pipeline_state(project_path: &Path) -> AppResult<Value> {
+    Ok(Value::Object(load_document(&pipeline_state_path(project_path))?))
+}
+
+pub fn write_pipeline_state(project_path: &Path, state: Value) -> AppResult<()> {
+    let Value::Object(document) = state else {
+        return Err(AppError::Invalid("pipeline state must be a JSON object".into()));
+    };
+    save_document(&pipeline_state_path(project_path), document)?;
+    ensure_git_ignored(project_path)
 }
 
 /// Reads a CuciCode settings file as a JSON object, rejecting files written by a newer version.
@@ -128,6 +196,34 @@ mod tests {
         write_project_ui(&project, &ProjectUiSettings::default()).unwrap();
         let ignore = fs::read_to_string(project.join(".gitignore")).unwrap();
         assert_eq!(ignore, format!("node_modules/\n{LOCAL_IGNORE_ENTRY}\n"));
+        fs::remove_dir_all(&project).unwrap();
+    }
+
+    #[test]
+    fn project_settings_keep_shared_and_personal_apart_and_personal_wins() {
+        let project = temp_project("sections");
+        set_project_setting(&project, false, "git", Some(json!({ "maxParallelWorktrees": 2, "pushMode": "local" }))).unwrap();
+        set_project_setting(&project, true, "git", Some(json!({ "maxParallelWorktrees": 4 }))).unwrap();
+        let settings = read_project_settings(&project).unwrap();
+        assert_eq!(settings.shared["git"]["pushMode"], json!("local"));
+        assert_eq!(effective_setting(&settings, &["git", "maxParallelWorktrees"]), Some(json!(4)));
+        assert_eq!(effective_setting(&settings, &["git", "pushMode"]), Some(json!("local")));
+        assert_eq!(effective_setting(&settings, &["git", "missing"]), None);
+        set_project_setting(&project, true, "git", None).unwrap();
+        assert_eq!(effective_setting(&read_project_settings(&project).unwrap(), &["git", "maxParallelWorktrees"]), Some(json!(2)));
+        assert!(set_project_setting(&project, false, "version", Some(json!(9))).is_err());
+        fs::remove_dir_all(&project).unwrap();
+    }
+
+    #[test]
+    fn pipeline_state_round_trips_and_must_be_an_object() {
+        let project = temp_project("state");
+        let mut state = read_pipeline_state(&project).unwrap();
+        assert!(state.as_object().unwrap().is_empty());
+        state = json!({ "features": { "auth": { "stage": "plan" } } });
+        write_pipeline_state(&project, state).unwrap();
+        assert_eq!(read_pipeline_state(&project).unwrap()["features"]["auth"]["stage"], json!("plan"));
+        assert!(write_pipeline_state(&project, json!([1, 2])).is_err());
         fs::remove_dir_all(&project).unwrap();
     }
 

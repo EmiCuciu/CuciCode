@@ -1,11 +1,14 @@
+mod checks;
 mod claude_cli;
 mod error;
+mod git_ops;
 mod jsonfile;
 mod paths;
 mod projects;
 mod secrets;
 mod settings;
 mod sidecar;
+mod stories;
 mod toolkit;
 mod voice;
 
@@ -20,7 +23,8 @@ use claude_cli::{CliScope, PluginAction};
 use error::{AppError, AppResult};
 use projects::Project;
 use settings::claude::{ResolvedSetting, Scope, ScopeFile, SettingsLocations};
-use settings::cucicode::ProjectUiSettings;
+use settings::cucicode::{ProjectSettings, ProjectUiSettings};
+use stories::{FolderTarget, StoriesTarget, Story};
 use sidecar::Sidecar;
 use toolkit::model::{ItemKind, ItemScope};
 
@@ -84,6 +88,107 @@ async fn cucicode_project_ui_get(project_path: PathBuf) -> AppResult<ProjectUiSe
 #[tauri::command]
 async fn cucicode_project_ui_set(project_path: PathBuf, settings: ProjectUiSettings) -> AppResult<()> {
     blocking(move || settings::cucicode::write_project_ui(&project_path, &settings)).await
+}
+
+fn stories_target(project: &std::path::Path) -> AppResult<FolderTarget> {
+    let settings = settings::cucicode::read_project_settings(project)?;
+    let folder = settings::cucicode::effective_setting(&settings, &["stories", "folder"]);
+    FolderTarget::new(project, folder.as_ref().and_then(Value::as_str))
+}
+
+#[tauri::command]
+async fn cucicode_settings_get(project_path: PathBuf) -> AppResult<ProjectSettings> {
+    blocking(move || settings::cucicode::read_project_settings(&project_path)).await
+}
+
+#[tauri::command]
+async fn cucicode_settings_set(project_path: PathBuf, local: bool, key: String, value: Option<Value>) -> AppResult<()> {
+    blocking(move || settings::cucicode::set_project_setting(&project_path, local, &key, value)).await
+}
+
+#[tauri::command]
+async fn pipeline_state_get(project_path: PathBuf) -> AppResult<Value> {
+    blocking(move || settings::cucicode::read_pipeline_state(&project_path)).await
+}
+
+#[tauri::command]
+async fn pipeline_state_set(project_path: PathBuf, state: Value) -> AppResult<()> {
+    blocking(move || settings::cucicode::write_pipeline_state(&project_path, state)).await
+}
+
+#[tauri::command]
+async fn stories_list(project_path: PathBuf) -> AppResult<Vec<Story>> {
+    blocking(move || stories_target(&project_path)?.list()).await
+}
+
+#[tauri::command]
+async fn story_set_field(project_path: PathBuf, story_id: String, key: String, value: Option<String>) -> AppResult<()> {
+    blocking(move || stories_target(&project_path)?.set_field(&story_id, &key, value.as_deref())).await
+}
+
+#[tauri::command]
+async fn story_archive(project_path: PathBuf, story_id: String) -> AppResult<PathBuf> {
+    blocking(move || stories_target(&project_path)?.archive(&story_id)).await
+}
+
+#[tauri::command]
+async fn worktree_list(project_path: PathBuf) -> AppResult<Vec<git_ops::Worktree>> {
+    blocking(move || git_ops::worktree_list(&project_path)).await
+}
+
+#[tauri::command]
+async fn worktree_add(project_path: PathBuf, story_id: String) -> AppResult<git_ops::Worktree> {
+    blocking(move || git_ops::worktree_add(&project_path, &story_id)).await
+}
+
+#[tauri::command]
+async fn worktree_remove(project_path: PathBuf, story_id: String, delete_branch: bool) -> AppResult<()> {
+    blocking(move || git_ops::worktree_remove(&project_path, &story_id, delete_branch)).await
+}
+
+#[tauri::command]
+async fn story_diff(project_path: PathBuf, story_id: String) -> AppResult<git_ops::StoryDiff> {
+    blocking(move || git_ops::story_diff(&project_path, &story_id)).await
+}
+
+#[tauri::command]
+async fn story_merge(project_path: PathBuf, story_id: String) -> AppResult<String> {
+    blocking(move || git_ops::merge_story(&project_path, &story_id)).await
+}
+
+fn check_commands(project: &std::path::Path) -> AppResult<Vec<String>> {
+    let settings = settings::cucicode::read_project_settings(project)?;
+    let configured: Vec<String> = settings::cucicode::effective_setting(&settings, &["checks", "commands"])
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|command| command.as_str().map(str::trim).filter(|command| !command.is_empty()).map(str::to_owned))
+        .collect();
+    Ok(if configured.is_empty() { checks::detect(project) } else { configured })
+}
+
+#[tauri::command]
+async fn checks_commands(project_path: PathBuf) -> AppResult<Vec<String>> {
+    blocking(move || check_commands(&project_path)).await
+}
+
+/// Runs the project's checks in a story's worktree, or in the project itself when no story is given.
+#[tauri::command]
+async fn checks_run(project_path: PathBuf, story_id: Option<String>) -> AppResult<checks::CheckRun> {
+    let project = project_path.clone();
+    let commands = blocking(move || check_commands(&project)).await?;
+    let dir = match &story_id {
+        Some(id) => {
+            git_ops::check_story_id(id)?;
+            let worktree = git_ops::worktree_path(&project_path, id);
+            if !worktree.is_dir() {
+                return Err(AppError::Invalid(format!("there is no worktree for {id}")));
+            }
+            worktree
+        }
+        None => project_path,
+    };
+    checks::run(&dir, &commands).await
 }
 
 #[tauri::command]
@@ -220,6 +325,20 @@ pub fn run() {
             claude_settings_set,
             cucicode_project_ui_get,
             cucicode_project_ui_set,
+            cucicode_settings_get,
+            cucicode_settings_set,
+            pipeline_state_get,
+            pipeline_state_set,
+            stories_list,
+            story_set_field,
+            story_archive,
+            worktree_list,
+            worktree_add,
+            worktree_remove,
+            story_diff,
+            story_merge,
+            checks_commands,
+            checks_run,
             toolkit_scan,
             toolkit_watch,
             mcp_health,
