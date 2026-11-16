@@ -133,6 +133,44 @@ Scopes scanned: managed, user (`~/.claude`), project (`.claude`), local (`settin
 
 In the UI (`features/toolkit`), pure logic is kept apart from components and unit-tested: `templates.ts` (wizard output), `mcp.ts` (server entry and secret references), `hooks.ts` (adding and removing a hook in a settings value), `toolkitStore.ts` (filters). The slash-command menu (`features/chat/slashCommands.ts`) uses Claude Code's own command list once a session runs and the Toolkit scan before that; `/model`, `/agents`, `/mcp`, `/hooks` and `/plugin` open the matching CuciCode screen.
 
+## Agentic workflow
+
+```
+ main thread session                         one session per story, in its worktree
+ ┌──────────────────────────────┐            ┌────────────────────────────────────────┐
+ │ brainstorm → plan → stories  │  approve   │ build → checks → review → merge         │
+ │ /cucicode:plan, :stories     │ ─────────► │ /cucicode:build   (CuciCode runs checks)│
+ │ writes Plans/, Stories/      │            │ /cucicode:fix on failure, up to N rounds│
+ └──────────────────────────────┘            │ /cucicode:review  → RESULT: approved    │
+                                             └────────────────────────────────────────┘
+```
+
+**The plugin** (`plugin/cucicode`, installable through the marketplace manifest at the repository root):
+
+| Part | Contents |
+|---|---|
+| `agents/` | `planner` (Opus, high effort), `story-writer`, `explorer` (Haiku, read-only), `worker`, and reviewers for logic, security, UI and code rules |
+| `skills/` | One per stage: `brainstorm`, `plan`, `stories`, `build`, `fix`, `review`, `onboard` (map, baseline, scope, audit, backlog for existing projects) |
+| `hooks/` | `protect-paths.mjs`: a `PreToolUse` hook that blocks edits to paths listed under `git.protectedPaths` in `.claude/cucicode/settings.json` |
+
+**In the app:**
+
+| File | Responsibility |
+|---|---|
+| `features/workflow/pipeline.ts` | The engine: a pure `step(run, event, config)` returning the next run and effects (ADR 17) |
+| `features/workflow/workflowStore.ts` | The driver: performs effects, listens to session events, saves the run, builds the Inbox |
+| `features/workflow/config.ts` | Typed workflow settings with defaults, layered default → project → local |
+| `git_ops.rs` | Story worktrees, diff against the merge base, commit, merge (aborted on conflict), push |
+| `checks.rs` | Detects check commands from build files and runs them, stopping at the first failure |
+| `stories.rs` | Story files behind the `StoriesTarget` trait; the folder target is the only implementation so far |
+| `settings/cucicode.rs` | `.claude/cucicode/settings.json` (shared), `settings.local.json` (personal), `pipeline.local.json` (run state) |
+
+A story moves through `queued → building → checks → (fixing) → review → awaiting approval → merging → merged`. After each worker turn CuciCode commits the worktree and runs the checks itself (ADR 19). Finishing a story merges its branch, moves its file to the archive folder, commits that, and removes the worktree.
+
+Checkpoints (after plan, after stories, after checks, after review) are per project; anything waiting, any failed story and any permission request appears in the **Inbox** in the top bar.
+
+The chat's mode toggle maps to the planner role: **Brainstorm** and **Plan** switch to the planner's model and effort, and Plan also uses Claude Code's `plan` permission mode.
+
 ## Settings editor
 
 `settings/claude.rs` lists the settings file of each scope (`scope_files`) and sets or removes one key in one of them (`set_value`). The screen (`features/settings`) is generated from the published schema (ADR 15): for each setting it shows the effective value, the value in each scope, and an editor that writes to the scope the user chooses.

@@ -17,4 +17,4 @@ Run these agents in parallel, giving each the story file path and the diff range
 
 Then give me one combined report: blocking findings first (with reviewer, `path:line`, problem and fix), then notes. Drop duplicates. Do not fix anything yourself.
 
-Set `review: approved` in the story's frontmatter when no reviewer reported a blocking finding, otherwise `review: changes_requested`. End with the single line `RESULT: approved` or `RESULT: changes_requested`.
+Record the verdict in the story's frontmatter by replacing the value of the existing `review:` line (do not add a second one): `approved` when no reviewer reported a blocking finding, otherwise `changes_requested`. End with the single line `RESULT: approved` or `RESULT: changes_requested`.

@@ -84,7 +84,8 @@ Roles shipped with CuciCode as a plugin (see section 8), each a normal Claude Co
 - **Checks before review:** auto-detect the test/build command (overridable); failing checks go back to the worker for up to N auto-fix rounds before any reviewer runs.
 - Blocking review findings go back to the worker.
 - Hand-off between stages goes through files (plan, stories), so sessions can be cleared between features without losing state. These files live outside `.claude` (which is write-protected for Claude's own tools): stories in `Stories/`, plans in `Plans/` at the project root.
-- The worker's worktree uses Claude Code's native subagent option (`isolation: worktree`) rather than worktrees managed by CuciCode.
+- CuciCode creates each story's worktree itself, at `.claude/worktrees/<story-id>` on branch `story/<story-id>`, and runs one worker session per story there. (An earlier revision used the subagent option `isolation: worktree`; that hides the worktree from the app, which then cannot run checks in it, show its diff or merge it. The worker agent file keeps that option for terminal use.)
+- Each pipeline stage is a skill in the CuciCode plugin (`/cucicode:plan`, `/cucicode:stories`, `/cucicode:build`, `/cucicode:fix`, `/cucicode:review`, `/cucicode:onboard`), so the workflow also runs from a terminal.
 
 **Model routing per project:** toggle **Auto** vs **Predefined**. Predefined shows a table role → model → effort.
 

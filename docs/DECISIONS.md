@@ -107,3 +107,45 @@ Short architecture decision records. Newest last.
 **Decision.** `apps/desktop/src/assets/claude-code-settings.schema.json` is a copy of `https://json.schemastore.org/claude-code-settings.json` (142 keys). The settings screen builds its list, descriptions and input types from it; keys found in files but missing from the schema are still shown and editable as JSON.
 
 **Consequence.** No network access at run time and no hand-written form per setting. The copy must be refreshed when Claude Code adds settings. Writing a setting replaces one top-level key in one scope's file and leaves the rest of the file, including key order, untouched.
+
+## 16. Pipeline stages are plugin skills; CuciCode only sequences them (2026-11-16)
+
+**Context.** The pipeline (brainstorm, plan, stories, build, review) could be coded inside the app, or expressed in Claude Code's own terms.
+
+**Decision.** Each stage is a skill in the CuciCode plugin (`/cucicode:plan`, `/cucicode:stories`, `/cucicode:build`, `/cucicode:fix`, `/cucicode:review`, `/cucicode:onboard`) and each role is a normal subagent file. Stages hand off through files (`Plans/`, `Stories/`), never through conversation history. The app sends the stage's slash command and waits at checkpoints.
+
+**Consequence.** The whole workflow runs from a plain `claude` terminal with the plugin installed. Sessions can be cleared between stages, which keeps context small.
+
+## 17. The pipeline engine is a pure function, separate from the driver (2026-11-16)
+
+**Decision.** `features/workflow/pipeline.ts` exports `step(run, event, config)`, which returns the next run and a list of effects (`send_main`, `start_worker`, `run_checks`, `merge`, ...). It performs nothing. `workflowStore.ts` is the driver: it performs the effects (sessions, worktrees, checks, merge) and feeds results back as events.
+
+**Consequence.** Every rule is unit-tested without running an agent: approval gates, the parallel limit, dependency order, the fix-round limit, "no review before checks pass". The run is saved to `.claude/cucicode/pipeline.local.json` after each step.
+
+## 18. CuciCode creates the story worktrees and runs one session per story (2026-11-16)
+
+**Context.** The spec was first amended to use Claude Code's `isolation: worktree` for the worker subagent. That hides the worktree's path and branch from the app, which then cannot run checks in it, show its diff or merge it.
+
+**Decision.** CuciCode creates `.claude/worktrees/<story-id>` on branch `story/<story-id>` (the same folder Claude Code uses for its own worktrees) and starts a separate session there for each story. The worker agent file keeps `isolation: worktree` for terminal use.
+
+**Consequence.** Each worker has its own timeline, stories run in parallel up to a limit, and diff, merge and discard are plain git on a known branch. Plan and story files are committed before building, because a worktree only contains what is committed. On Windows the worker's process is ended before its folder is removed, since a running process locks its working directory.
+
+## 19. The app verifies; it does not trust an agent's report (2026-11-16)
+
+**Decision.** After every worker turn CuciCode commits the worktree itself, then runs the project's check commands itself (`checks.rs`) and reads the exit codes. Reviewers start only when all checks pass. Failing output goes back to the worker, up to a configurable number of rounds; after that the story stops and appears in the Inbox.
+
+**Consequence.** Review is never spent on code that does not build, and a worker cannot pass by claiming success. Check commands are auto-detected from the project's build files and can be overridden per project.
+
+## 20. Workers get narrow permissions, not a bypass (2026-11-16)
+
+**Context.** A worker must edit files, run the checks and commit without stopping for every prompt. Running it with all permissions bypassed would remove the protection the user relies on.
+
+**Decision.** Worker sessions use `acceptEdits` plus session-only allow rules for exactly the project's check commands and basic git (`status`, `diff`, `log`, `show`, `add`, `commit`). Anything else still raises a permission request, which appears in the Inbox. Protected paths are enforced by a plugin hook that runs regardless of permission mode.
+
+**Evidence.** Verified with real runs: without the rules the worker was denied `npm test` and `git commit`; with them it tested and committed, and compound shell commands outside the rules were still denied.
+
+## 21. A turn ended by the usage limit is not a finished turn (2026-11-16)
+
+**Context.** When the subscription window runs out, Claude Code ends the turn with a `success` result whose text is "You've hit your 5-hour limit". Treated as success, the pipeline would run checks and review on work that was never done.
+
+**Decision.** The driver watches for the `rate_limit` event with status `rejected` (and, as a fallback, the limit message itself) and reports that turn as stopped. A main-thread stage waits with a "Run it again" action; a story is marked failed with the reason and can be retried.
