@@ -109,7 +109,11 @@ Claude Code settings are read from and written to Claude Code's own files; CuciC
 | Sidecar | Done, unit-tested, smoke-tested against the real SDK |
 | UI | Shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter, read-only effective settings. Type-checks and builds; timeline state is unit-tested. Not yet run inside the desktop shell |
 | Rust core | Sidecar supervisor, settings scope resolver, project registry with git status, per-project UI preferences. Unit-tested |
-| Voice input | Not started |
+| Voice input | Push-to-talk recording and local transcription. Compiles; audio conversion is unit-tested; not yet tried with a microphone |
+
+## Voice input
+
+`voice/mod.rs` records from the default microphone (`cpal`) while the button or Ctrl+Space is held, converts the audio to mono 16 kHz (`voice/audio.rs`) and transcribes it with whisper.cpp (`whisper-rs`). The transcript is placed in the message box for editing; nothing is sent automatically. The Whisper base model (about 148 MB, multilingual) is downloaded from Hugging Face on first use into the app data directory. No audio leaves the machine.
 
 ## Rust core internals
 
@@ -143,3 +147,16 @@ A session is opened lazily: viewing an old session only loads its history; the C
 | `projects_list`, `projects_add(path)`, `projects_remove(id)` | Project registry with git branch, clean/dirty, remote host |
 | `claude_settings_resolve(projectPath)` | Effective Claude Code settings, each with winning scope and file path |
 | `cucicode_project_ui_get/set(projectPath)` | Per-project UI preferences in `.claude/cucicode/settings.local.json` |
+| `voice_status`, `voice_download_model`, `voice_start`, `voice_stop` | Push-to-talk; `voice_stop` returns the transcript; event `voice://download` reports model download progress |
+
+## Running it
+
+Prerequisites: Node 22 or newer, Rust (stable, MSVC toolchain on Windows), Visual Studio Build Tools with "Desktop development with C++", CMake, and a logged-in `claude` CLI.
+
+```
+npm install
+npm run dev        # builds the sidecar, starts Vite and the desktop shell
+npm test           # sidecar and UI unit tests
+npm run typecheck
+cd apps/desktop/src-tauri && cargo test
+```

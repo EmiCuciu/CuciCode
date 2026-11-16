@@ -4,11 +4,14 @@ mod paths;
 mod projects;
 mod settings;
 mod sidecar;
+mod voice;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use serde_json::Value;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
+use voice::{Voice, VoiceStatus};
 
 use error::{AppError, AppResult};
 use projects::Project;
@@ -61,11 +64,36 @@ async fn cucicode_project_ui_set(project_path: PathBuf, settings: ProjectUiSetti
     blocking(move || settings::cucicode::write_project_ui(&project_path, &settings)).await
 }
 
+#[tauri::command]
+fn voice_status(voice: State<'_, Arc<Voice>>) -> VoiceStatus {
+    voice.status()
+}
+
+#[tauri::command]
+async fn voice_download_model(app: AppHandle, voice: State<'_, Arc<Voice>>) -> AppResult<()> {
+    let voice = Arc::clone(&voice);
+    blocking(move || voice.download_model(&app)).await
+}
+
+#[tauri::command]
+async fn voice_start(voice: State<'_, Arc<Voice>>) -> AppResult<()> {
+    let voice = Arc::clone(&voice);
+    blocking(move || voice.start()).await
+}
+
+#[tauri::command]
+async fn voice_stop(voice: State<'_, Arc<Voice>>) -> AppResult<String> {
+    let voice = Arc::clone(&voice);
+    blocking(move || voice.stop_and_transcribe()).await
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(Sidecar::new(app.handle().clone()));
+            let models = app.path().app_data_dir()?.join("models");
+            app.manage(Arc::new(Voice::new(models)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -76,6 +104,10 @@ pub fn run() {
             claude_settings_resolve,
             cucicode_project_ui_get,
             cucicode_project_ui_set,
+            voice_status,
+            voice_download_model,
+            voice_start,
+            voice_stop,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run CuciCode");

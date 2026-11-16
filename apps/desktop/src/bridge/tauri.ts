@@ -51,6 +51,26 @@ export const projectsApi = {
   },
 };
 
+export interface VoiceStatus {
+  modelReady: boolean;
+  recording: boolean;
+  modelPath: string;
+}
+
+export interface VoiceDownloadProgress {
+  received: number;
+  total: number | null;
+}
+
+export const voiceApi = {
+  status: (): Promise<VoiceStatus> => invoke('voice_status'),
+  downloadModel: (): Promise<void> => invoke('voice_download_model'),
+  start: (): Promise<void> => invoke('voice_start'),
+  stop: (): Promise<string> => invoke('voice_stop'),
+  onDownloadProgress: (handler: (progress: VoiceDownloadProgress) => void): Promise<UnlistenFn> =>
+    listen<VoiceDownloadProgress>('voice://download', ({ payload }) => handler(payload)),
+};
+
 export const settingsApi = {
   resolveClaude: (projectPath: string): Promise<ResolvedSetting[]> => invoke('claude_settings_resolve', { projectPath }),
   getProjectUi: (projectPath: string): Promise<ProjectUiSettings> => invoke('cucicode_project_ui_get', { projectPath }),
