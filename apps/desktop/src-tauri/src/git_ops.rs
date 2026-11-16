@@ -253,9 +253,38 @@ pub fn merge_story(project: &Path, id: &str) -> AppResult<String> {
     }
 }
 
+/// Commits everything under one folder of the main working tree, if anything there changed.
+pub fn commit_folder(project: &Path, folder: &str, message: &str) -> AppResult<bool> {
+    git(project, &["add", "-A", "--", folder])?;
+    if git(project, &["diff", "--cached", "--name-only", "--", folder])?.trim().is_empty() {
+        return Ok(false);
+    }
+    git(project, &["commit", "-q", "-m", message, "--", folder])?;
+    Ok(true)
+}
+
+pub fn push(project: &Path) -> AppResult<String> {
+    let branch = base_branch(project)?;
+    git(project, &["push", "origin", &branch])?;
+    Ok(branch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commit_folder_commits_only_that_folder_and_reports_when_nothing_changed() {
+        let dir = repo("commit-folder");
+        fs::create_dir_all(dir.join("Stories")).unwrap();
+        fs::write(dir.join("Stories/S-1.md"), "story").unwrap();
+        fs::write(dir.join("other.txt"), "untouched").unwrap();
+        assert!(commit_folder(&dir, "Stories", "archive").unwrap());
+        assert!(!commit_folder(&dir, "Stories", "archive").unwrap());
+        assert!(git(&dir, &["status", "--porcelain"]).unwrap().contains("other.txt"));
+        assert!(git(&dir, &["log", "--oneline", "-1"]).unwrap().contains("archive"));
+        cleanup(&dir);
+    }
 
     fn repo(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("cucicode-git-{name}-{}", std::process::id()));

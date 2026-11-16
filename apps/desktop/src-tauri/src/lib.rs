@@ -156,6 +156,64 @@ async fn story_merge(project_path: PathBuf, story_id: String) -> AppResult<Strin
     blocking(move || git_ops::merge_story(&project_path, &story_id)).await
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FinishedStory {
+    commit: String,
+    archived: bool,
+    pushed: bool,
+    warnings: Vec<String>,
+}
+
+/// Merges a story, archives its file, removes its worktree and optionally pushes.
+/// Only the merge can fail the whole operation; later steps are reported as warnings.
+#[tauri::command]
+async fn story_finish(project_path: PathBuf, story_id: String, push: bool) -> AppResult<FinishedStory> {
+    blocking(move || {
+        let commit = git_ops::merge_story(&project_path, &story_id)?;
+        let mut warnings = Vec::new();
+        let target = stories_target(&project_path)?;
+        let archived = match target.archive(&story_id) {
+            Ok(_) => {
+                let folder = target.folder_name();
+                match git_ops::commit_folder(&project_path, &folder, &format!("{story_id}: archive story")) {
+                    Ok(_) => true,
+                    Err(error) => {
+                        warnings.push(format!("the story was archived but not committed: {error}"));
+                        true
+                    }
+                }
+            }
+            Err(error) => {
+                warnings.push(format!("the story file was not archived: {error}"));
+                false
+            }
+        };
+        if let Err(error) = git_ops::worktree_remove(&project_path, &story_id, true) {
+            warnings.push(format!("the worktree was not removed: {error}"));
+        }
+        let pushed = push
+            && match git_ops::push(&project_path) {
+                Ok(_) => true,
+                Err(error) => {
+                    warnings.push(format!("not pushed: {error}"));
+                    false
+                }
+            };
+        Ok(FinishedStory { commit, archived, pushed, warnings })
+    })
+    .await
+}
+
+/// Where the CuciCode plugin marketplace lives, so the app can offer to install it.
+#[tauri::command]
+fn plugin_source() -> String {
+    std::env::var("CUCICODE_PLUGIN_SOURCE").unwrap_or_else(|_| {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..");
+        root.canonicalize().unwrap_or(root).display().to_string().trim_start_matches(r"\\?\").to_owned()
+    })
+}
+
 fn check_commands(project: &std::path::Path) -> AppResult<Vec<String>> {
     let settings = settings::cucicode::read_project_settings(project)?;
     let configured: Vec<String> = settings::cucicode::effective_setting(&settings, &["checks", "commands"])
@@ -337,6 +395,8 @@ pub fn run() {
             worktree_remove,
             story_diff,
             story_merge,
+            story_finish,
+            plugin_source,
             checks_commands,
             checks_run,
             toolkit_scan,

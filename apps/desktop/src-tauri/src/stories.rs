@@ -134,6 +134,11 @@ impl FolderTarget {
         Ok(Self { project: project.to_path_buf(), folder: project.join(relative) })
     }
 
+    /// The stories folder relative to the project, with forward slashes, for git commands.
+    pub fn folder_name(&self) -> String {
+        self.folder.strip_prefix(&self.project).unwrap_or(&self.folder).to_string_lossy().replace('\\', "/")
+    }
+
     fn read_dir(&self, dir: &Path, archived: bool) -> Vec<Story> {
         let Ok(entries) = fs::read_dir(dir) else {
             return Vec::new();
