@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { pluginApi, toolkitApi, workflowApi } from '../../bridge/tauri.ts';
 import type { Project, ToolkitItem } from '../../bridge/types.ts';
+import { setFrontmatterField } from '../toolkit/frontmatterEdit.ts';
 import { APPROVAL_STAGES, ROLE_INFO, ROLES, sourceOf, type ApprovalStage, type Role, type WorkflowConfig } from './config.ts';
 import { useWorkflow } from './workflowStore.ts';
 
@@ -63,15 +64,63 @@ function PluginCard({ project, agents }: { project: Project; agents: ToolkitItem
   );
 }
 
-function RoutingCard({ config, agents, save, source }: { config: WorkflowConfig; agents: ToolkitItem[]; save: (routing: WorkflowConfig['routing']) => void; source: 'default' | 'project' | 'local' }) {
+function RoutingCard({
+  config,
+  agents,
+  projectPath,
+  rescan,
+  save,
+  source,
+}: {
+  config: WorkflowConfig;
+  agents: ToolkitItem[];
+  projectPath: string;
+  rescan: () => Promise<void>;
+  save: (routing: WorkflowConfig['routing']) => void;
+  source: 'default' | 'project' | 'local';
+}) {
   const setRole = (role: Role, patch: Partial<WorkflowConfig['routing']['roles'][Role]>): void =>
     save({ ...config.routing, roles: { ...config.routing.roles, [role]: { ...config.routing.roles[role], ...patch } } });
   const predefined = config.routing.mode === 'predefined';
+  const [error, setError] = useState<string | null>(null);
+
+  /** Returns the path of an agent file the user may edit for this role, copying a read-only one into the project first. */
+  const editableAgent = async (role: Role): Promise<string> => {
+    const agent = agents.find((candidate) => candidate.name === config.routing.roles[role].agent);
+    if (!agent) {
+      throw new Error('The agent for this role was not found.');
+    }
+    if (agent.editable) {
+      return agent.path;
+    }
+    const localName = agent.plugin ? agent.name.slice(agent.plugin.length + 1) : agent.name;
+    const path = await toolkitApi.copy('agent', agent.path, 'project', localName, false, projectPath);
+    setRole(role, { agent: localName });
+    return path;
+  };
+  const run = async (work: () => Promise<void>): Promise<void> => {
+    try {
+      setError(null);
+      await work();
+      await rescan();
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+  const copyToProject = (role: Role): Promise<void> => run(async () => void (await editableAgent(role)));
+  const setAgentField = (role: Role, key: 'model' | 'effort', value: string): Promise<void> =>
+    run(async () => {
+      const path = await editableAgent(role);
+      const content = await toolkitApi.read(path, projectPath);
+      await toolkitApi.write(path, setFrontmatterField(content, key, value.trim() || null), projectPath);
+    });
+
   return (
     <Card
       title="Roles and model routing"
-      note="Each role is filled by an agent. Reuse one of your existing agents or keep CuciCode's. In Auto, each agent uses the model in its own file. In Predefined, sessions CuciCode starts (main thread, workers) use the model and effort in this table."
+      note="Each role is filled by an agent: reuse one of your own or keep CuciCode's. In Auto, nothing is overridden. In Predefined, the main thread and workers start with the model and effort in this table, and for the other roles the table edits the agent's own file, so the terminal sees the same values."
     >
+      {error && <div className="mb-2 text-bad">{error}</div>}
       <div className="mb-2 flex items-center gap-3">
         {(['auto', 'predefined'] as const).map((mode) => (
           <label key={mode} className="flex items-center gap-1">
@@ -121,23 +170,47 @@ function RoutingCard({ config, agents, save, source }: { config: WorkflowConfig;
                           {chosen.relativePath} — {chosen.description ?? 'no description'}
                         </div>
                       )}
+                      {chosen && !chosen.editable && (
+                        <button type="button" className="text-[11px] text-accent hover:underline" title="Copies this agent into .claude/agents of the project and uses the copy for this role" onClick={() => void copyToProject(role)}>
+                          create my own from this template
+                        </button>
+                      )}
+                      {!chosen && <div className="text-[11px] text-warn">Not found. Install the CuciCode plugin or pick another agent.</div>}
                     </>
                   )}
                 </td>
                 <td className="py-1 pr-2">
                   {predefined && sessionRole ? (
                     <input className={`${input} w-28 font-mono text-[12px]`} value={route.model} onChange={(event) => setRole(role, { model: event.target.value })} />
+                  ) : predefined && chosen ? (
+                    <input
+                      key={`${chosen.id}:${chosen.model ?? ''}`}
+                      className={`${input} w-28 font-mono text-[12px]`}
+                      defaultValue={chosen.model ?? ''}
+                      placeholder="inherit"
+                      title="Written to the agent's own file when you leave the field"
+                      onBlur={(event) => event.target.value.trim() !== (chosen.model ?? '') && void setAgentField(role, 'model', event.target.value)}
+                    />
                   ) : (
-                    <span className="font-mono text-[12px] text-muted" title={sessionRole ? 'Switch to Predefined to set it here' : "Set in the agent's own file; open it in Toolkit → Agents"}>
-                      {sessionRole ? (predefined ? route.model : 'default') : (chosen?.model ?? route.model)}
+                    <span className="font-mono text-[12px] text-muted" title="Switch to Predefined to set it here">
+                      {sessionRole ? 'default' : (chosen?.model ?? 'inherit')}
                     </span>
                   )}
                 </td>
                 <td className="py-1">
                   {predefined && sessionRole ? (
                     <input className={`${input} w-20 font-mono text-[12px]`} value={route.effort} placeholder="default" onChange={(event) => setRole(role, { effort: event.target.value })} />
+                  ) : predefined && chosen ? (
+                    <input
+                      key={`${chosen.id}:${String(chosen.frontmatter.effort ?? '')}`}
+                      className={`${input} w-20 font-mono text-[12px]`}
+                      defaultValue={String(chosen.frontmatter.effort ?? '')}
+                      placeholder="default"
+                      title="Written to the agent's own file when you leave the field"
+                      onBlur={(event) => event.target.value.trim() !== String(chosen.frontmatter.effort ?? '') && void setAgentField(role, 'effort', event.target.value)}
+                    />
                   ) : (
-                    <span className="font-mono text-[12px] text-muted">{sessionRole ? 'default' : String(chosen?.frontmatter.effort ?? (route.effort || 'default'))}</span>
+                    <span className="font-mono text-[12px] text-muted">{sessionRole ? 'default' : String(chosen?.frontmatter.effort ?? 'default')}</span>
                   )}
                 </td>
               </tr>
@@ -146,7 +219,7 @@ function RoutingCard({ config, agents, save, source }: { config: WorkflowConfig;
         </tbody>
       </table>
       <p className="mt-2 text-[11px] text-muted">
-        To change the model of a subagent role, open its file in Toolkit → Agents. CuciCode's own agents are read-only: use Duplicate to copy one into your project, then pick the copy here.
+        CuciCode's own agents are read-only. Changing the model or effort of a role that uses one first copies that agent into the project's .claude/agents folder and points the role at the copy.
       </p>
     </Card>
   );
@@ -161,16 +234,25 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
   const [paths, setPaths] = useState('');
   const [commands, setCommands] = useState('');
   const projectId = project?.id ?? null;
+  const scanPath = project?.path ?? null;
+  const rescan = useCallback(async (): Promise<void> => {
+    if (scanPath === null) {
+      return;
+    }
+    try {
+      const scan = await toolkitApi.scan(scanPath);
+      setAgents(scan.items.filter((item) => item.kind === 'agent'));
+    } catch {
+      setAgents([]);
+    }
+  }, [scanPath]);
 
   useEffect(() => {
     if (project) {
       void load(project.id);
-      toolkitApi
-        .scan(project.path)
-        .then((scan) => setAgents(scan.items.filter((item) => item.kind === 'agent')))
-        .catch(() => setAgents([]));
+      void rescan();
     }
-  }, [project, load]);
+  }, [project, load, rescan]);
 
   const config = workflow?.config;
   useEffect(() => {
@@ -220,7 +302,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
         </label>
       </Card>
 
-      <RoutingCard config={config} agents={agents} source={from('routing', 'mode')} save={(routing) => save('routing', routing)} />
+      <RoutingCard config={config} agents={agents} projectPath={project.path} rescan={rescan} source={from('routing', 'mode')} save={(routing) => save('routing', routing)} />
 
       <Card title="Checks" note="Run by CuciCode in the story's worktree after the worker finishes. Reviewers start only when all of them pass.">
         <div className="mb-1 text-muted">

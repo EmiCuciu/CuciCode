@@ -173,7 +173,7 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
         ]);
         const existing = current(projectId);
         const saved = state.run as FeatureRun | undefined;
-        const run = existing?.run ?? (saved && typeof saved.feature === 'string' ? saved : null);
+        const run = existing?.run ?? (saved && typeof saved.feature === 'string' ? { ...saved, kind: saved.kind ?? 'feature' } : null);
         set((store) => ({
           projects: {
             ...store.projects,
