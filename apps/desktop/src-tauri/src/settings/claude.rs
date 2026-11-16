@@ -173,14 +173,27 @@ fn user_policy() -> Option<SettingsSource> {
     None
 }
 
-fn managed_source() -> AppResult<Option<SettingsSource>> {
-    if let Some(policy) = machine_policy() {
+/// Where settings are read from. Tests point this at temporary directories.
+pub struct SettingsLocations {
+    pub config_dir: PathBuf,
+    pub managed_dir: PathBuf,
+    pub read_os_policy: bool,
+}
+
+impl SettingsLocations {
+    pub fn system() -> AppResult<Self> {
+        Ok(Self { config_dir: claude_config_dir()?, managed_dir: managed_settings_dir(), read_os_policy: true })
+    }
+}
+
+fn managed_source(locations: &SettingsLocations) -> AppResult<Option<SettingsSource>> {
+    if let Some(policy) = locations.read_os_policy.then(machine_policy).flatten() {
         return Ok(Some(policy));
     }
-    if let Some(file) = managed_file_source(&managed_settings_dir())? {
+    if let Some(file) = managed_file_source(&locations.managed_dir)? {
         return Ok(Some(file));
     }
-    Ok(user_policy())
+    Ok(locations.read_os_policy.then(user_policy).flatten())
 }
 
 fn file_source(scope: Scope, path: PathBuf) -> AppResult<Option<SettingsSource>> {
@@ -191,19 +204,20 @@ fn file_source(scope: Scope, path: PathBuf) -> AppResult<Option<SettingsSource>>
     }))
 }
 
-pub fn load_sources(project_path: &Path) -> AppResult<Vec<SettingsSource>> {
-    let project_claude = project_path.join(".claude");
-    let candidates = [
-        managed_source()?,
-        file_source(Scope::Local, project_claude.join("settings.local.json"))?,
-        file_source(Scope::Project, project_claude.join("settings.json"))?,
-        file_source(Scope::User, claude_config_dir()?.join("settings.json"))?,
-    ];
+/// Loads every settings file that exists, ordered from highest to lowest precedence.
+pub fn load_sources(locations: &SettingsLocations, project_path: Option<&Path>) -> AppResult<Vec<SettingsSource>> {
+    let mut candidates = vec![managed_source(locations)?];
+    if let Some(project_path) = project_path {
+        let project_claude = project_path.join(".claude");
+        candidates.push(file_source(Scope::Local, project_claude.join("settings.local.json"))?);
+        candidates.push(file_source(Scope::Project, project_claude.join("settings.json"))?);
+    }
+    candidates.push(file_source(Scope::User, locations.config_dir.join("settings.json"))?);
     Ok(candidates.into_iter().flatten().collect())
 }
 
 pub fn resolve_for_project(project_path: &Path) -> AppResult<Vec<ResolvedSetting>> {
-    Ok(resolve(&load_sources(project_path)?))
+    Ok(resolve(&load_sources(&SettingsLocations::system()?, Some(project_path))?))
 }
 
 #[cfg(test)]

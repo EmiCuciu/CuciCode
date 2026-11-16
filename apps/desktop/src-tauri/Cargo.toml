@@ -23,6 +23,8 @@ dirs = "=7.0.0"
 whisper-rs = "=0.16.0"
 cpal = "=0.18.2"
 ureq = "=3.5.2"
+yaml-rust2 = "=0.13.0"
+walkdir = "=2.5.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "=0.56.0"

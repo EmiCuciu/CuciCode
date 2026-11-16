@@ -13,6 +13,16 @@ pub fn claude_config_dir() -> AppResult<PathBuf> {
         .ok_or_else(|| AppError::Invalid("cannot determine the home directory".into()))
 }
 
+/// `.claude.json`: Claude Code's own state file, which also holds user- and local-scope MCP servers.
+pub fn claude_user_state_file() -> AppResult<PathBuf> {
+    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(dir).join(".claude.json"));
+    }
+    dirs::home_dir()
+        .map(|home| home.join(".claude.json"))
+        .ok_or_else(|| AppError::Invalid("cannot determine the home directory".into()))
+}
+
 pub fn managed_settings_dir() -> PathBuf {
     if cfg!(windows) {
         PathBuf::from(r"C:\Program Files\ClaudeCode")
