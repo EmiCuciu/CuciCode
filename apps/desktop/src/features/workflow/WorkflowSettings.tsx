@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { pluginApi, toolkitApi, workflowApi } from '../../bridge/tauri.ts';
+import { pluginApi, secretsApi, toolkitApi, workflowApi, type GitHostInfo } from '../../bridge/tauri.ts';
 import type { Project, ToolkitItem } from '../../bridge/types.ts';
 import { setFrontmatterField } from '../toolkit/frontmatterEdit.ts';
 import { APPROVAL_STAGES, ROLE_INFO, ROLES, sourceOf, type ApprovalStage, type Role, type WorkflowConfig } from './config.ts';
@@ -225,6 +225,82 @@ function RoutingCard({
   );
 }
 
+function HostToken({ projectPath, needed }: { projectPath: string; needed: boolean }) {
+  const [info, setInfo] = useState<GitHostInfo | null>(null);
+  const [token, setToken] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const refresh = useCallback(() => {
+    workflowApi
+      .hostInfo(projectPath)
+      .then(setInfo)
+      .catch(() => setInfo(null));
+  }, [projectPath]);
+  useEffect(refresh, [refresh]);
+
+  if (!info) {
+    return null;
+  }
+  const remote = info.remote;
+  const tokenName = info.tokenName;
+  const store = async (): Promise<void> => {
+    if (tokenName === null) {
+      return;
+    }
+    try {
+      await secretsApi.set(tokenName, token.trim());
+      setToken('');
+      setMessage('Stored in the OS keychain.');
+      refresh();
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  };
+  const remove = async (): Promise<void> => {
+    if (tokenName === null) {
+      return;
+    }
+    await secretsApi.remove(tokenName).catch((reason: unknown) => setMessage(String(reason)));
+    refresh();
+  };
+
+  return (
+    <div className="mt-3 rounded border border-line/60 p-2">
+      <div>
+        Remote:{' '}
+        {remote ? (
+          <span className="font-mono">
+            {remote.domain}/{remote.owner}/{remote.repo}
+          </span>
+        ) : (
+          <span className="text-muted">no origin remote</span>
+        )}
+      </div>
+      {remote && tokenName === null && <div className="text-muted">Pull requests can be opened on GitHub and Bitbucket only. Pushing still works through your normal git setup.</div>}
+      {tokenName !== null && (
+        <>
+          <p className="text-muted">
+            Pushing uses your normal git credentials. Opening a pull request needs an access token for {remote?.domain}, kept in the OS keychain and never given to agents.
+            {needed && !info.hasToken ? ' Required for the pull request mode selected above.' : ''}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={info.hasToken ? 'text-ok' : needed ? 'text-warn' : 'text-muted'}>{info.hasToken ? 'Token stored.' : 'No token stored.'}</span>
+            <input type="password" className={`${input} w-72 font-mono text-[12px]`} placeholder={info.hasToken ? 'Replace the token' : 'Paste an access token'} value={token} onChange={(event) => setToken(event.target.value)} />
+            <button type="button" disabled={token.trim().length === 0} className="rounded border border-line px-2 py-0.5 hover:bg-raised disabled:opacity-40" onClick={() => void store()}>
+              Save token
+            </button>
+            {info.hasToken && (
+              <button type="button" className="text-muted hover:text-bad" onClick={() => void remove()}>
+                remove
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {message && <div className="mt-1 text-muted">{message}</div>}
+    </div>
+  );
+}
+
 export function WorkflowSettings({ project }: { project: Project | null }) {
   const workflow = useWorkflow((state) => (project ? state.projects[project.id] : undefined));
   const load = useWorkflow((state) => state.load);
@@ -321,7 +397,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
           <select className={input} value={config.git.pushMode} onChange={(event) => save('git', { ...config.git, pushMode: event.target.value })}>
             <option value="local">keep it local</option>
             <option value="direct">push the branch to origin</option>
-            <option value="pr">open a pull request (not available yet: behaves like "keep it local")</option>
+            <option value="pr">push the story branch and open a pull request (no local merge)</option>
           </select>
           <Source value={from('git', 'pushMode')} />
           <span>Merging a reviewed story</span>
@@ -334,6 +410,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
           <input type="number" min={1} max={8} className={`${input} w-20`} value={config.git.maxParallelWorktrees} onChange={(event) => save('git', { ...config.git, maxParallelWorktrees: Number(event.target.value) })} />
           <Source value={from('git', 'maxParallelWorktrees')} />
         </div>
+        <HostToken projectPath={project.path} needed={config.git.pushMode === 'pr'} />
         <div className="mt-3">
           <div>
             Protected paths <Source value={from('git', 'protectedPaths')} />

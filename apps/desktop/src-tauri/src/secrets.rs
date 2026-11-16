@@ -57,11 +57,28 @@ pub fn delete(name: &str) -> AppResult<()> {
     save_names(&remaining)
 }
 
-/// Every stored secret, for the environment of sessions CuciCode starts.
+/// Secrets CuciCode keeps for itself, such as git host tokens. They are never given to a session.
+const PRIVATE_PREFIX: &str = "CUCICODE_";
+
+pub fn get(name: &str) -> AppResult<Option<String>> {
+    check_name(name)?;
+    match keychain(name)?.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(AppError::Invalid(format!("cannot read the secret from the OS keychain: {error}"))),
+    }
+}
+
+pub fn is_private(name: &str) -> bool {
+    name.starts_with(PRIVATE_PREFIX)
+}
+
+/// Every stored secret that sessions may see, for the environment of sessions CuciCode starts.
 pub fn environment() -> HashMap<String, String> {
     names()
         .unwrap_or_default()
         .into_iter()
+        .filter(|name| !is_private(name))
         .filter_map(|name| {
             let value = keychain(&name).ok()?.get_password().ok()?;
             Some((name, value))
@@ -72,6 +89,14 @@ pub fn environment() -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_tokens_are_private_and_mcp_secrets_are_not() {
+        assert!(is_private("CUCICODE_GITHUB_TOKEN"));
+        assert!(is_private("CUCICODE_BITBUCKET_TOKEN"));
+        assert!(!is_private("GITHUB_TOKEN"));
+        assert!(!is_private("POSTGRES_URL"));
+    }
 
     #[test]
     fn accepts_environment_variable_style_names_only() {

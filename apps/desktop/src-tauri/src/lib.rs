@@ -1,6 +1,7 @@
 mod checks;
 mod claude_cli;
 mod error;
+mod git_host;
 mod git_ops;
 mod jsonfile;
 mod paths;
@@ -220,6 +221,47 @@ async fn story_finish(project_path: PathBuf, story_id: String, push: bool) -> Ap
     .await
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitHostInfo {
+    remote: Option<git_host::Remote>,
+    token_name: Option<&'static str>,
+    has_token: bool,
+}
+
+/// Which host the project's origin points at and whether a token for it is stored.
+#[tauri::command]
+async fn git_host_info(project_path: PathBuf) -> AppResult<GitHostInfo> {
+    blocking(move || {
+        let remote = git_host::origin(&project_path).ok();
+        let token_name = remote.as_ref().and_then(|remote| match remote.kind {
+            git_host::HostKind::GitHub => Some(git_host::GITHUB_TOKEN),
+            git_host::HostKind::Bitbucket => Some(git_host::BITBUCKET_TOKEN),
+            git_host::HostKind::Other => None,
+        });
+        let has_token = token_name.is_some_and(|name| secrets::names().unwrap_or_default().iter().any(|stored| stored == name));
+        Ok(GitHostInfo { remote, token_name, has_token })
+    })
+    .await
+}
+
+/// Pushes a story's branch, opens a pull request for it and removes the local worktree.
+#[tauri::command]
+async fn story_pull_request(project_path: PathBuf, story_id: String) -> AppResult<git_host::OpenedPullRequest> {
+    blocking(move || {
+        let story = stories_target(&project_path)?.find(&story_id).ok();
+        let title = story.as_ref().map_or_else(|| story_id.clone(), |story| format!("{}: {}", story.id, story.title));
+        let criteria = story.as_ref().map(|story| story.acceptance_criteria.iter().map(|item| format!("- {item}")).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+        let description = format!("Story {story_id}, built and reviewed with the CuciCode pipeline.\n\n## Acceptance criteria\n\n{criteria}\n");
+        let opened = git_host::open_pull_request(&project_path, &story_id, &title, &description)?;
+        if let Err(error) = git_ops::worktree_remove(&project_path, &story_id, false) {
+            eprintln!("[git] worktree for {story_id} was not removed: {error}");
+        }
+        Ok(opened)
+    })
+    .await
+}
+
 /// Commits the plan and story files so that worktrees, which start from the last commit, contain them.
 #[tauri::command]
 async fn pipeline_commit_docs(project_path: PathBuf, message: String) -> AppResult<bool> {
@@ -430,6 +472,8 @@ pub fn run() {
             story_diff,
             story_merge,
             story_finish,
+            story_pull_request,
+            git_host_info,
             pipeline_commit_docs,
             plugin_source,
             checks_commands,

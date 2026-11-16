@@ -152,7 +152,7 @@ impl FolderTarget {
         files.iter().filter_map(|path| fs::read_to_string(path).ok().map(|content| parse_story(path, &content, archived))).collect()
     }
 
-    fn find(&self, id: &str) -> AppResult<Story> {
+    pub fn find(&self, id: &str) -> AppResult<Story> {
         self.read_dir(&self.folder, false)
             .into_iter()
             .find(|story| story.id == id)

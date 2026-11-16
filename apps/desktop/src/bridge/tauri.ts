@@ -115,6 +115,12 @@ export interface CheckRun {
   results: CheckResult[];
 }
 
+export interface GitHostInfo {
+  remote: { kind: 'github' | 'bitbucket' | 'other'; domain: string; owner: string; repo: string } | null;
+  tokenName: string | null;
+  hasToken: boolean;
+}
+
 export interface FinishedStory {
   commit: string;
   archived: boolean;
@@ -135,6 +141,8 @@ export const workflowApi = {
   commits: (projectPath: string, storyId: string): Promise<StoryCommit[]> => invoke('story_commits', { projectPath, storyId }),
   resetStory: (projectPath: string, storyId: string, sha: string): Promise<void> => invoke('story_reset', { projectPath, storyId, sha }),
   diff: (projectPath: string, storyId: string): Promise<StoryDiff> => invoke('story_diff', { projectPath, storyId }),
+  pullRequest: (projectPath: string, storyId: string): Promise<{ url: string; branch: string; base: string }> => invoke('story_pull_request', { projectPath, storyId }),
+  hostInfo: (projectPath: string): Promise<GitHostInfo> => invoke('git_host_info', { projectPath }),
   finish: (projectPath: string, storyId: string, push: boolean): Promise<FinishedStory> => invoke('story_finish', { projectPath, storyId, push }),
   checkCommands: (projectPath: string): Promise<string[]> => invoke('checks_commands', { projectPath }),
   runChecks: (projectPath: string, storyId: string | null): Promise<CheckRun> => invoke('checks_run', { projectPath, storyId }),

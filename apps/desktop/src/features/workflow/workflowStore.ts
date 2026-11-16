@@ -141,8 +141,15 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
       case 'merge':
         try {
           await releaseWorktree(projectId, effect.storyId);
-          const push = current(projectId)?.config.git.pushMode === 'direct';
-          const finished = await workflowApi.finish(path, effect.storyId, push);
+          const pushMode = current(projectId)?.config.git.pushMode;
+          if (pushMode === 'pr') {
+            const opened = await workflowApi.pullRequest(path, effect.storyId);
+            patch(projectId, { notices: [...(current(projectId)?.notices ?? []), { ts: Date.now(), text: `${effect.storyId}: pull request opened at ${opened.url}` }], view: { kind: 'main' } });
+            await get().dispatch(projectId, { type: 'merged', storyId: effect.storyId });
+            await get().refresh(projectId);
+            return;
+          }
+          const finished = await workflowApi.finish(path, effect.storyId, pushMode === 'direct');
           const notices = finished.warnings.map((text) => ({ ts: Date.now(), text: `${effect.storyId}: ${text}` }));
           patch(projectId, { notices: [...(current(projectId)?.notices ?? []), ...notices], view: { kind: 'main' } });
           await get().dispatch(projectId, { type: 'merged', storyId: effect.storyId });

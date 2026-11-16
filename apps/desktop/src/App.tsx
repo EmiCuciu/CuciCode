@@ -29,7 +29,7 @@ export function App() {
   const error = useApp((state) => state.error);
   const dismissError = useApp((state) => state.dismissError);
   const desktop = inDesktopShell();
-  const [settingsTab, setSettingsTab] = useState<'claude' | 'workflow'>('claude');
+  const [settingsTab, setSettingsTab] = useState<'claude' | 'workflow'>(import.meta.env.VITE_START_SETTINGS_TAB === 'workflow' ? 'workflow' : 'claude');
   const workflowError = useWorkflow((state) => state.error);
 
   useEffect(() => {
