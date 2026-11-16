@@ -22,6 +22,13 @@ export interface WorkflowConfig {
   };
   checks: { commands: string[] };
   stories: { target: 'folder'; folder: string };
+  budget: {
+    /** Most turns one worker task may take; 0 means no limit. */
+    maxTurnsPerTask: number;
+    /** Usage percentage of the 5-hour window at which CuciCode warns. */
+    warnAtPercent: number;
+    downgrade: { enabled: boolean; atPercent: number; model: string };
+  };
 }
 
 export const ROLE_INFO: Record<Role, { label: string; job: string; defaultAgent: string }> = {
@@ -61,6 +68,7 @@ export function defaultConfig(): WorkflowConfig {
     git: { pushMode: 'local', mergeMode: 'approval', requireCi: false, maxParallelWorktrees: 2, protectedPaths: [...DEFAULT_PROTECTED_PATHS] },
     checks: { commands: [] },
     stories: { target: 'folder', folder: 'Stories' },
+    budget: { maxTurnsPerTask: 0, warnAtPercent: 80, downgrade: { enabled: false, atPercent: 90, model: 'haiku' } },
   };
 }
 
@@ -100,6 +108,8 @@ function applyLayer(base: WorkflowConfig, layer: Dict | undefined): WorkflowConf
   const git = pick(layer, 'git');
   const checks = pick(layer, 'checks');
   const stories = pick(layer, 'stories');
+  const budget = pick(layer, 'budget');
+  const downgrade = pick(budget, 'downgrade');
   return {
     pipeline: {
       approvals: Object.fromEntries(APPROVAL_STAGES.map((stage) => [stage, bool(approvals?.[stage], base.pipeline.approvals[stage])])) as Record<ApprovalStage, boolean>,
@@ -124,6 +134,15 @@ function applyLayer(base: WorkflowConfig, layer: Dict | undefined): WorkflowConf
     },
     checks: { commands: strings(checks?.commands, base.checks.commands) },
     stories: { target: 'folder', folder: text(stories?.folder, base.stories.folder) || 'Stories' },
+    budget: {
+      maxTurnsPerTask: int(budget?.maxTurnsPerTask, base.budget.maxTurnsPerTask, 0, 1000),
+      warnAtPercent: int(budget?.warnAtPercent, base.budget.warnAtPercent, 1, 100),
+      downgrade: {
+        enabled: bool(downgrade?.enabled, base.budget.downgrade.enabled),
+        atPercent: int(downgrade?.atPercent, base.budget.downgrade.atPercent, 1, 100),
+        model: text(downgrade?.model, base.budget.downgrade.model) || base.budget.downgrade.model,
+      },
+    },
   };
 }
 
@@ -148,6 +167,20 @@ export function modeRoute(config: WorkflowConfig, mode: 'chat' | 'brainstorm' | 
   }
   const planner = config.routing.roles.planner;
   return { model: planner.model || undefined, effort: planner.effort || undefined, permissionMode: mode === 'plan' ? 'plan' : 'default' };
+}
+
+/**
+ * What a worker session starts with. Near the usage limit, and only if the project opted in,
+ * the worker is moved to a cheaper model so the remaining window lasts longer.
+ */
+export function workerRoute(config: WorkflowConfig, fiveHourUtilization: number | null): { model: string | undefined; effort: string | undefined; maxTurns: number | undefined; downgraded: boolean } {
+  const route = sessionRoute(config, 'worker');
+  const maxTurns = config.budget.maxTurnsPerTask > 0 ? config.budget.maxTurnsPerTask : undefined;
+  const { enabled, atPercent, model } = config.budget.downgrade;
+  if (enabled && fiveHourUtilization !== null && fiveHourUtilization >= atPercent && route.model !== model) {
+    return { model, effort: route.effort, maxTurns, downgraded: true };
+  }
+  return { ...route, maxTurns, downgraded: false };
 }
 
 /** The model and effort a session should start with for a role, or nothing when routing is automatic. */

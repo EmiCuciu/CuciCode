@@ -24,6 +24,8 @@ export interface ChatState {
   cwd: string | null;
   /** Permission rules granted to this session only, for example a worker's check commands. */
   allowedTools: string[];
+  /** Stops a turn after this many steps; unset means no limit. */
+  maxTurns: number | undefined;
   mode: ChatMode;
   resumeSessionId: string | null;
   info: ChatInfo | null;
@@ -37,6 +39,7 @@ const newChat = (): ChatState => ({
   open: false,
   cwd: null,
   allowedTools: [],
+  maxTurns: undefined,
   mode: 'chat',
   resumeSessionId: null,
   info: null,
@@ -68,7 +71,7 @@ interface AppState {
   setModel: (projectId: string, model: string | undefined) => Promise<void>;
   setEffort: (projectId: string, effort: Effort | undefined) => Promise<void>;
   closeChat: (chatId: string) => Promise<void>;
-  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode' | 'allowedTools'>>) => void;
+  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode' | 'allowedTools' | 'maxTurns'>>) => void;
   applyMode: (chatId: string, mode: ChatMode, route: { model: string | undefined; effort: Effort | undefined; permissionMode: PermissionMode }) => Promise<void>;
   setPermissionMode: (projectId: string, mode: PermissionMode) => Promise<void>;
   toggleCategory: (projectId: string, category: EventCategory) => Promise<void>;
@@ -128,6 +131,7 @@ export const useApp = create<AppState>((set, get) => {
       effort: current.effort,
       permissionMode: current.permissionMode,
       allowedTools: current.allowedTools.length > 0 ? current.allowedTools : undefined,
+      maxTurns: current.maxTurns,
     });
     patchChat(id, { open: true });
   };

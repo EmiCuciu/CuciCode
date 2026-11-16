@@ -423,6 +423,26 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
         </div>
       </Card>
 
+      <Card title="Budget guardrails" note="Limits that protect your usage window. The parallel limit is under Git above.">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2">
+          <span>Most turns one worker task may take (0 = no limit)</span>
+          <input type="number" min={0} max={1000} className={`${input} w-20`} value={config.budget.maxTurnsPerTask} onChange={(event) => save('budget', { ...config.budget, maxTurnsPerTask: Number(event.target.value) })} />
+          <Source value={from('budget', 'maxTurnsPerTask')} />
+          <span>Warn when the 5-hour window reaches (%)</span>
+          <input type="number" min={1} max={100} className={`${input} w-20`} value={config.budget.warnAtPercent} onChange={(event) => save('budget', { ...config.budget, warnAtPercent: Number(event.target.value) })} />
+          <Source value={from('budget', 'warnAtPercent')} />
+        </div>
+        <label className="mt-3 flex flex-wrap items-center gap-2">
+          <input type="checkbox" checked={config.budget.downgrade.enabled} onChange={(event) => save('budget', { ...config.budget, downgrade: { ...config.budget.downgrade, enabled: event.target.checked } })} />
+          Near the limit, start workers on a cheaper model: at
+          <input type="number" min={1} max={100} className={`${input} w-16`} value={config.budget.downgrade.atPercent} onChange={(event) => save('budget', { ...config.budget, downgrade: { ...config.budget.downgrade, atPercent: Number(event.target.value) } })} />
+          % use
+          <input className={`${input} w-24 font-mono text-[12px]`} defaultValue={config.budget.downgrade.model} onBlur={(event) => event.target.value.trim() !== config.budget.downgrade.model && save('budget', { ...config.budget, downgrade: { ...config.budget.downgrade, model: event.target.value.trim() } })} />
+          <Source value={from('budget', 'downgrade')} />
+        </label>
+        <p className="mt-1 text-[11px] text-muted">The percentage is the one Claude Code last reported, so the switch can lag by a turn. A note appears in the pipeline panel when a worker is downgraded.</p>
+      </Card>
+
       <Card title="Stories" note="One markdown file per story. Finished stories move to an archive subfolder.">
         <label className="flex items-center gap-2">
           Folder

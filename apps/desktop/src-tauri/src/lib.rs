@@ -11,6 +11,7 @@ mod settings;
 mod sidecar;
 mod stories;
 mod toolkit;
+mod usage;
 mod voice;
 
 use std::path::PathBuf;
@@ -322,6 +323,29 @@ async fn checks_run(project_path: PathBuf, story_id: Option<String>) -> AppResul
     checks::run(&dir, &commands).await
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UsageReport {
+    limits: Option<usage::ReportedLimits>,
+    rows: Vec<usage::UsageRow>,
+}
+
+/// Reported window figures plus token usage counted from transcripts since a point in time.
+#[tauri::command]
+async fn usage_report(since_ms: u64) -> AppResult<UsageReport> {
+    blocking(move || {
+        let limits = usage::reported_limits(&paths::claude_user_state_file()?)?;
+        let rows = usage::scan(&paths::claude_config_dir()?.join("projects"), since_ms);
+        Ok(UsageReport { limits, rows })
+    })
+    .await
+}
+
+#[tauri::command]
+async fn usage_limits() -> AppResult<Option<usage::ReportedLimits>> {
+    blocking(|| usage::reported_limits(&paths::claude_user_state_file()?)).await
+}
+
 #[tauri::command]
 async fn toolkit_scan(project_path: Option<PathBuf>) -> AppResult<toolkit::model::ToolkitScan> {
     blocking(move || toolkit::scan(project_path.as_deref())).await
@@ -478,6 +502,8 @@ pub fn run() {
             plugin_source,
             checks_commands,
             checks_run,
+            usage_report,
+            usage_limits,
             toolkit_scan,
             toolkit_watch,
             mcp_health,

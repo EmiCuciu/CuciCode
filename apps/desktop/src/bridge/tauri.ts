@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
+import type { ReportedLimits, UsageRow } from '../features/usage/usageMath.ts';
 import type {
   ChatInfo,
   RewindResult,
@@ -127,6 +128,11 @@ export interface FinishedStory {
   pushed: boolean;
   warnings: string[];
 }
+
+export const usageApi = {
+  report: (sinceMs: number): Promise<{ limits: ReportedLimits | null; rows: UsageRow[] }> => invoke('usage_report', { sinceMs }),
+  limits: (): Promise<ReportedLimits | null> => invoke('usage_limits'),
+};
 
 export const workflowApi = {
   settings: (projectPath: string): Promise<{ shared: Record<string, unknown>; local: Record<string, unknown> }> => invoke('cucicode_settings_get', { projectPath }),

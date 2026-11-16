@@ -317,3 +317,23 @@ describe('onboarding an existing project', () => {
     expect(step(run, TWO_STORIES, cfg).effects).toEqual([]);
   });
 });
+
+describe('budget guardrails', () => {
+  it('limits worker turns and downgrades the worker model near the usage limit only when enabled', async () => {
+    const { workerRoute } = await import('./config.ts');
+    const plain = defaultConfig();
+    expect(workerRoute(plain, 99)).toEqual({ model: undefined, effort: undefined, maxTurns: undefined, downgraded: false });
+    const guarded = config((value) => {
+      value.routing.mode = 'predefined';
+      value.budget = { maxTurnsPerTask: 40, warnAtPercent: 80, downgrade: { enabled: true, atPercent: 90, model: 'haiku' } };
+    });
+    expect(workerRoute(guarded, 50)).toEqual({ model: 'sonnet', effort: undefined, maxTurns: 40, downgraded: false });
+    expect(workerRoute(guarded, 90)).toEqual({ model: 'haiku', effort: undefined, maxTurns: 40, downgraded: true });
+    expect(workerRoute(guarded, null).downgraded).toBe(false);
+  });
+
+  it('reads budget settings from a settings file and clamps bad values', () => {
+    const resolved = resolveConfig({ budget: { maxTurnsPerTask: -5, warnAtPercent: 250, downgrade: { enabled: true, model: '' } } }, null);
+    expect(resolved.budget).toEqual({ maxTurnsPerTask: 0, warnAtPercent: 100, downgrade: { enabled: true, atPercent: 90, model: 'haiku' } });
+  });
+});

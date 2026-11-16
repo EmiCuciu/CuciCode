@@ -1,15 +1,57 @@
 import type { Project } from '../../bridge/types.ts';
+import { useEffect, useState } from 'react';
+import { usageApi } from '../../bridge/tauri.ts';
+import { useNav } from '../../state/nav.ts';
 import type { ChatState } from '../../state/store.ts';
+import { FIVE_HOURS_MS, isStale, outlook, type ReportedLimits } from '../usage/usageMath.ts';
 import { Inbox } from '../workflow/Inbox.tsx';
 
 function formatReset(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/** The 5-hour window as Claude Code last reported it, re-read every minute and after each turn. */
+function ReportedWindow({ refreshKey }: { refreshKey: unknown }) {
+  const [limits, setLimits] = useState<ReportedLimits | null>(null);
+  useEffect(() => {
+    const read = (): void => {
+      usageApi
+        .limits()
+        .then(setLimits)
+        .catch(() => setLimits(null));
+    };
+    read();
+    const timer = setInterval(read, 60_000);
+    return () => clearInterval(timer);
+  }, [refreshKey]);
+  const window = limits?.fiveHour ?? null;
+  if (!limits || !window) {
+    return <span className="font-mono text-[11px] text-muted">usage window: no data yet</span>;
+  }
+  if (isStale(window, Date.now())) {
+    return <span className="font-mono text-[11px] text-muted">5h window: reset since last check</span>;
+  }
+  const result = outlook(window, limits.fetchedAtMs, FIVE_HOURS_MS);
+  const percent = Math.round(window.utilization);
+  const tone = percent >= 100 || result.kind === 'runs_out' ? 'text-bad' : percent >= 80 ? 'text-warn' : 'text-ok';
+  const at = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const tail = result.kind === 'runs_out' ? `runs out ~${at(result.runsOutAtMs)}` : result.kind === 'fine' || result.kind === 'exhausted' ? `resets ${at(result.resetsAtMs)}` : '';
+  return (
+    <button
+      type="button"
+      className={`font-mono text-[11px] ${tone}`}
+      title={`Reported by Claude Code at ${at(limits.fetchedAtMs)}; the run-out time is an estimate. Click for details.`}
+      onClick={() => useNav.getState().go('usage')}
+    >
+      5h window {percent}%{tail ? ` · ${tail}` : ''}
+    </button>
+  );
+}
+
 function UsageIndicator({ chat }: { chat: ChatState | null }) {
   const limit = chat?.timeline.rateLimit;
-  if (!limit) {
-    return <span className="font-mono text-[11px] text-muted">usage window: no data yet</span>;
+  if (!limit || limit.status === 'allowed') {
+    return <ReportedWindow refreshKey={chat?.timeline.lastResult} />;
   }
   const tone = limit.status === 'rejected' ? 'text-bad' : limit.status === 'allowed_warning' ? 'text-warn' : 'text-ok';
   const parts = [

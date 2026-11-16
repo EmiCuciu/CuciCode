@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { Effort, TimelineEvent } from '@cucicode/protocol';
-import { workflowApi, type CheckRun, type Story, type Worktree } from '../../bridge/tauri.ts';
+import { usageApi, workflowApi, type CheckRun, type Story, type Worktree } from '../../bridge/tauri.ts';
 import { chatListeners, useApp } from '../../state/store.ts';
-import { resolveConfig, sessionRoute, type WorkflowConfig } from './config.ts';
+import { defaultConfig, resolveConfig, workerRoute, type WorkflowConfig } from './config.ts';
 import { isUsageLimitText, newRun, pendingItems, step, workerAllowedTools, type Effect, type FeatureRun, type PipelineEvent } from './pipeline.ts';
 
 const WORKER_SEPARATOR = '::';
@@ -100,8 +100,19 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
     await workflowApi.commitDocs(path, `${workflow?.run?.feature ?? 'feature'}: plan and stories`);
     const worktree = await workflowApi.addWorktree(path, storyId);
     const chatId = workerChatId(projectId, storyId);
-    const route = workflow ? sessionRoute(workflow.config, 'worker') : { model: undefined, effort: undefined };
-    useApp.getState().configureChat(chatId, { cwd: worktree.path, model: route.model, effort: route.effort as Effort | undefined, permissionMode: 'acceptEdits', allowedTools: workerAllowedTools(workflow?.checkCommands ?? []) });
+    const limits = await usageApi.limits().catch(() => null);
+    const route = workerRoute(workflow?.config ?? defaultConfig(), limits?.fiveHour?.utilization ?? null);
+    if (route.downgraded && useApp.getState().chats[chatId]?.model !== route.model) {
+      patch(projectId, { notices: [...(current(projectId)?.notices ?? []), { ts: Date.now(), text: `${storyId}: the 5-hour window is at ${Math.round(limits?.fiveHour?.utilization ?? 0)}%, so the worker runs on ${route.model}` }] });
+    }
+    useApp.getState().configureChat(chatId, {
+      cwd: worktree.path,
+      model: route.model,
+      effort: route.effort as Effort | undefined,
+      maxTurns: route.maxTurns,
+      permissionMode: 'acceptEdits',
+      allowedTools: workerAllowedTools(workflow?.checkCommands ?? []),
+    });
     return chatId;
   };
 

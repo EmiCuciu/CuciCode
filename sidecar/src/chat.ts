@@ -50,6 +50,7 @@ export class ChatSession {
         effort: params.effort,
         permissionMode: params.permissionMode,
         allowedTools: params.allowedTools,
+        maxTurns: params.maxTurns,
         canUseTool: broker.canUseToolFor(params.chatId),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         settingSources: ['user', 'project', 'local'],
