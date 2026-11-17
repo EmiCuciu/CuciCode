@@ -1,5 +1,5 @@
 import type { EventCategory } from '@cucicode/protocol';
-import type { DisplayEvent, TimelineState } from './timeline.ts';
+import { buildRows, type DisplayEvent, type TimelineState } from './timeline.ts';
 
 /**
  * Splits one thread level of a timeline into responses and works out which events carry a
@@ -35,7 +35,7 @@ function latestTimestamp(span: DisplayEvent[]): number | null {
 
 function mainThreadEnd(span: DisplayEvent[]): number | null {
   const result = span.find((event) => event.kind === 'result');
-  return result ? result.ts : latestTimestamp(span);
+  return result?.ts ?? latestTimestamp(span);
 }
 
 export function responseMarks(
@@ -60,15 +60,15 @@ export function responseMarks(
     }
 
     const hasLaterUserMessage = index < spans.length - 1;
-    const complete = parentToolUseId === null ? hasLaterUserMessage || timeline.runState === 'idle' : parentResult !== undefined;
+    const complete = hasLaterUserMessage || (parentToolUseId === null ? timeline.runState === 'idle' : parentResult !== undefined);
     const start = first?.kind === 'user_message' ? first.ts : null;
-    const end = parentToolUseId === null ? mainThreadEnd(span) : (parentResult?.ts ?? null);
+    const end = parentToolUseId === null ? mainThreadEnd(span) : hasLaterUserMessage ? latestTimestamp(span) : (parentResult?.ts ?? null);
     if (!complete || start === null || end === null || end < start) {
       return;
     }
-    const lastVisible = span.findLast((event) => !hidden.has(event.category));
-    if (lastVisible) {
-      durations.set(lastVisible.id, end - start);
+    const lastRow = buildRows(span, parentToolUseId, hidden).at(-1);
+    if (lastRow) {
+      durations.set(lastRow.event.id, end - start);
     }
   });
 

@@ -21,6 +21,7 @@ export type MessageTimeFormat = {
 export type FormattedMessageTime = {
   label: string;
   detail: string;
+  spokenDetail: string;
   iso: string;
 };
 
@@ -35,7 +36,7 @@ const MS_PER_DAY = 86_400_000;
 const MS_PER_SECOND = 1000;
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_MINUTE = 60;
-const NUMERIC_PARTS_LOCALE = 'en-GB';
+export const ENGLISH_LOCALE = 'en-GB';
 const ENGINE_MIDNIGHT_HOUR = '24';
 const MIDNIGHT_HOUR = '00';
 
@@ -56,7 +57,7 @@ function zoneAndCycleOptions(format: MessageTimeFormat): Intl.DateTimeFormatOpti
 }
 
 function readParts(ts: number, format: MessageTimeFormat): DateParts {
-  const formatter = new Intl.DateTimeFormat(NUMERIC_PARTS_LOCALE, {
+  const formatter = new Intl.DateTimeFormat(ENGLISH_LOCALE, {
     ...zoneAndCycleOptions(format),
     numberingSystem: 'latn',
     day: '2-digit',
@@ -95,8 +96,8 @@ function datePrefix(
   return [parts.day, parts.month, parts.year].join(format.dateSeparator);
 }
 
-function tooltip(ts: number, format: MessageTimeFormat): string {
-  return new Intl.DateTimeFormat(format.locale, {
+function fullDateTime(ts: number, locale: string, format: MessageTimeFormat): string {
+  return new Intl.DateTimeFormat(locale, {
     ...zoneAndCycleOptions(format),
     dateStyle: 'full',
     timeStyle: 'long',
@@ -116,7 +117,8 @@ export function formatMessageTime(
   const time = timeOfDay(parts);
   return {
     label: prefix === null ? time : `${prefix}${format.dateTimeSeparator}${time}`,
-    detail: tooltip(ts, format),
+    detail: fullDateTime(ts, format.locale, format),
+    spokenDetail: fullDateTime(ts, ENGLISH_LOCALE, format),
     iso: new Date(ts).toISOString(),
   };
 }

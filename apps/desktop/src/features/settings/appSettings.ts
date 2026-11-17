@@ -2,7 +2,7 @@
  * App-wide, personal CuciCode settings. Holds the single set of defaults and resolves the raw
  * user settings object into fully valid settings, so a bad value can never reach the UI.
  */
-import type { MessageTimeFormat, MessageTimeHourCycle } from '../chat/messageTime';
+import { ENGLISH_LOCALE, type MessageTimeFormat, type MessageTimeHourCycle } from '../chat/messageTime.ts';
 
 export type AppSettings = {
   chat: {
@@ -12,8 +12,8 @@ export type AppSettings = {
 
 const HOUR_CYCLES: readonly string[] = ['h11', 'h12', 'h23', 'h24'];
 const MAX_SEPARATOR_LENGTH = 3;
-const MAX_RELATIVE_DAYS = 7;
-const MAX_MIN_RESPONSE_MS = 60_000;
+export const MAX_RELATIVE_DAYS = 7;
+export const MAX_MIN_RESPONSE_MS = 60_000;
 
 export function defaultAppSettings(): AppSettings {
   return {
@@ -55,7 +55,7 @@ function resolveSeparator(value: unknown, fallback: string): string {
 
 function isValidTimeZone(value: string): boolean {
   try {
-    new Intl.DateTimeFormat('en-GB', { timeZone: value });
+    new Intl.DateTimeFormat(ENGLISH_LOCALE, { timeZone: value });
     return true;
   } catch {
     return false;

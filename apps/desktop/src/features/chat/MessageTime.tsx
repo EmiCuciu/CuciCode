@@ -17,7 +17,7 @@ export function MessageTime({ ts }: { ts: number | null }) {
     return null;
   }
   return (
-    <time dateTime={formatted.iso} title={formatted.detail} className={MUTED_MONO}>
+    <time dateTime={formatted.iso} title={formatted.detail} aria-label={formatted.spokenDetail} className={MUTED_MONO}>
       {formatted.label}
     </time>
   );

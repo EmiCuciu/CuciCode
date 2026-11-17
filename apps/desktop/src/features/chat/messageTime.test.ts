@@ -104,6 +104,11 @@ describe('formatMessageTime tooltip', () => {
     expect(result?.detail).toMatch(/^Wednesday,? 12 March 2025 at 09:30:00 EET$/);
     expect(result?.iso).toBe('2025-03-12T07:30:00.000Z');
   });
+
+  it('keeps the spoken detail in English whatever the tooltip locale is', () => {
+    const result = formatMessageTime(at('2025-03-12T09:30:00+02:00'), NOW, { ...FORMAT, locale: 'ro-RO' });
+    expect(result?.spokenDetail).toMatch(/^Wednesday,? 12 March 2025 at 09:30:00 EET$/);
+  });
 });
 
 describe('no Romanian text', () => {

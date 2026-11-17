@@ -54,6 +54,15 @@ const sessionState = (state: 'idle' | 'running'): TimelineEvent => ({
   parentToolUseId: null,
   state,
 });
+const notice = (id: string, ts: number | null): TimelineEvent => ({
+  kind: 'notice',
+  id,
+  ts,
+  category: 'system',
+  parentToolUseId: null,
+  level: 'info',
+  text: 'same',
+});
 const live = (events: TimelineEvent[]) => events.reduce(applyEvent, emptyTimeline);
 
 describe('responseMarks', () => {
@@ -97,7 +106,6 @@ describe('responseMarks', () => {
 
   it('returns no duration when a timestamp is missing or the end precedes the start', () => {
     expect(responseMarks(fromHistory([user('u', null), text('a', 2000)]), null).durations.size).toBe(0);
-    expect(responseMarks(fromHistory([user('u', 1000), text('a', 2000), result('r', null)]), null).durations.size).toBe(0);
     expect(responseMarks(fromHistory([user('u', 5000), text('a', 6000), result('r', 2000)]), null).durations.size).toBe(0);
   });
 
@@ -118,5 +126,31 @@ describe('responseMarks', () => {
   it('keeps main thread and subagent thread events apart', () => {
     const timeline = fromHistory([user('u', 1000), text('a', 2000), text('sa', 2500, 't1')]);
     expect([...responseMarks(timeline, null).stampIds]).toEqual(['u', 'a']);
+  });
+
+  it('attaches the duration to the row that represents collapsed duplicate events', () => {
+    const timeline = fromHistory([user('u', 1000), text('a', 2000), notice('n1', 3000), notice('n2', 4000)]);
+    expect([...responseMarks(timeline, null).durations]).toEqual([['n1', 3000]]);
+  });
+
+  it('falls back to the latest timestamp when the result event has no timestamp', () => {
+    const timeline = fromHistory([user('u', 1000), text('a', 2000), text('b', 4000), result('r', null)]);
+    expect([...responseMarks(timeline, null).durations]).toEqual([['r', 3000]]);
+  });
+
+  it('cuts earlier subagent responses at the next user message', () => {
+    const events = [
+      user('u', 1000),
+      user('s1', 2000, 't1'),
+      text('a1', 2500, 't1'),
+      user('s2', 3000, 't1'),
+      text('a2', 3500, 't1'),
+      toolResult('t1', 9000),
+    ];
+    const marks = responseMarks(live(events), 't1');
+    expect([...marks.durations]).toEqual([
+      ['a1', 500],
+      ['a2', 6000],
+    ]);
   });
 });

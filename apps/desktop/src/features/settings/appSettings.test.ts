@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultAppSettings, resolveAppSettings } from './appSettings';
+import { defaultAppSettings, resolveAppSettings } from './appSettings.ts';
 
 const resolve = (timestamps: Record<string, unknown>) =>
   resolveAppSettings({ chat: { timestamps } }).chat.timestamps;
