@@ -1,0 +1,62 @@
+{
+  "routing": {
+    "mode": "predefined",
+    "roles": {
+      "main": {
+        "agent": "",
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "planner": {
+        "agent": "cucicode:planner",
+        "model": "opus",
+        "effort": "high"
+      },
+      "storyWriter": {
+        "agent": "story-writer",
+        "model": "sonnet",
+        "effort": ""
+      },
+      "explorer": {
+        "agent": "explorer",
+        "model": "haiku",
+        "effort": ""
+      },
+      "worker": {
+        "agent": "cucicode:worker",
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "reviewerLogic": {
+        "agent": "reviewer-logic",
+        "model": "sonnet",
+        "effort": ""
+      },
+      "reviewerSecurity": {
+        "agent": "reviewer-security",
+        "model": "sonnet",
+        "effort": ""
+      },
+      "reviewerUi": {
+        "agent": "reviewer-ui",
+        "model": "sonnet",
+        "effort": ""
+      },
+      "reviewerCodeRules": {
+        "agent": "reviewer-code-rules",
+        "model": "sonnet",
+        "effort": ""
+      }
+    }
+  },
+  "version": 1,
+  "budget": {
+    "maxTurnsPerTask": 0,
+    "warnAtPercent": 75,
+    "downgrade": {
+      "enabled": false,
+      "atPercent": 90,
+      "model": "haiku"
+    }
+  }
+}
