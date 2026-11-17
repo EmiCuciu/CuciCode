@@ -7,6 +7,7 @@ mod git_ops;
 mod jsonfile;
 mod paths;
 mod projects;
+mod pty;
 mod secrets;
 mod settings;
 mod sidecar;
@@ -347,6 +348,26 @@ async fn activity_list(limit: usize) -> AppResult<Vec<activity::ActivityEntry>> 
 }
 
 #[tauri::command]
+fn pty_open(app: AppHandle, terminals: State<'_, pty::Terminals>, id: String, cwd: PathBuf, cols: u16, rows: u16, command: Option<String>) -> AppResult<()> {
+    terminals.open(app, &id, &cwd, cols, rows, command.as_deref())
+}
+
+#[tauri::command]
+fn pty_write(terminals: State<'_, pty::Terminals>, id: String, data: String) -> AppResult<()> {
+    terminals.write(&id, &data)
+}
+
+#[tauri::command]
+fn pty_resize(terminals: State<'_, pty::Terminals>, id: String, cols: u16, rows: u16) -> AppResult<()> {
+    terminals.resize(&id, cols, rows)
+}
+
+#[tauri::command]
+fn pty_close(terminals: State<'_, pty::Terminals>, id: String) {
+    terminals.close(&id);
+}
+
+#[tauri::command]
 async fn usage_report(since_ms: u64) -> AppResult<UsageReport> {
     blocking(move || {
         let limits = usage::reported_limits(&paths::claude_user_state_file()?)?;
@@ -483,6 +504,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(Sidecar::new(app.handle().clone()));
             app.manage(toolkit::watch::ToolkitWatcher::default());
+            app.manage(pty::Terminals::default());
             let models = app.path().app_data_dir()?.join("models");
             app.manage(Arc::new(Voice::new(models)));
             Ok(())
@@ -520,6 +542,10 @@ pub fn run() {
             checks_commands,
             checks_run,
             usage_report,
+            pty_open,
+            pty_write,
+            pty_resize,
+            pty_close,
             activity_append,
             activity_list,
             usage_limits,

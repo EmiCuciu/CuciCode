@@ -221,6 +221,7 @@ function normalizeSystem(msg: Dict, ctx: NormalizeContext): TimelineEvent[] {
         effort: strOrNull(msg.effort),
         tools: strArray(msg.tools),
         slashCommands: strArray(msg.slash_commands),
+        terminalSlashCommands: strArray(msg.terminal_slash_commands),
         skills: strArray(msg.skills),
         agents: strArray(msg.agents),
         mcpServers: (Array.isArray(msg.mcp_servers) ? msg.mcp_servers : [])

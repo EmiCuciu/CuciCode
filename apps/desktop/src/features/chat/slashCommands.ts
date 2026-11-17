@@ -1,7 +1,7 @@
 import type { CommandOption } from '@cucicode/protocol';
 import type { ToolkitItem } from '../../bridge/types.ts';
 
-export type NativeAction = 'model' | 'toolkit:agent' | 'toolkit:mcp' | 'toolkit:hook' | 'toolkit:plugins' | 'newCommand';
+export type NativeAction = 'model' | 'toolkit:agent' | 'toolkit:mcp' | 'toolkit:hook' | 'toolkit:plugins' | 'newCommand' | 'terminal';
 
 export interface SlashEntry {
   name: string;
@@ -45,7 +45,7 @@ function fromToolkit(item: ToolkitItem): SlashEntry {
  * Builds the / menu. Once a session is running, Claude Code's own command list is the
  * source of truth; before that, the menu is assembled from the Toolkit scan.
  */
-export function buildMenu(reported: CommandOption[] | null, toolkit: ToolkitItem[]): SlashEntry[] {
+export function buildMenu(reported: CommandOption[] | null, toolkit: ToolkitItem[], terminalOnly: string[] = []): SlashEntry[] {
   const invocable = toolkit.filter((item) => (item.kind === 'skill' || item.kind === 'command') && item.frontmatter['user-invocable'] !== false && item.conflict?.wins !== false);
   const byName = new Map<string, SlashEntry>();
   const add = (entry: SlashEntry): void => {
@@ -55,6 +55,11 @@ export function buildMenu(reported: CommandOption[] | null, toolkit: ToolkitItem
   };
   for (const [name, native] of Object.entries(NATIVE)) {
     add({ name, description: native.description, argumentHint: '', source: 'built-in · CuciCode screen', native: native.action });
+  }
+  for (const raw of terminalOnly) {
+    const name = raw.replace(/^\//, '');
+    const listed = reported?.find((command) => command.name === name);
+    add({ name, description: listed?.description || 'Interactive screen; opens Claude Code in the terminal pane', argumentHint: '', source: 'built-in · terminal', native: 'terminal' });
   }
   if (reported) {
     const sources = new Map(invocable.map((item) => [item.name, fromToolkit(item).source]));

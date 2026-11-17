@@ -7,6 +7,7 @@ import { defaultConfig, modeRoute } from '../workflow/config.ts';
 import { useWorkflow } from '../workflow/workflowStore.ts';
 import { useToolkit, type ToolkitTab } from '../toolkit/toolkitStore.ts';
 import { buildMenu, filterMenu, slashQuery, type SlashEntry } from './slashCommands.ts';
+import { claudeCommand, useTerminal } from '../terminal/terminalStore.ts';
 import { useVoice, type VoiceControls } from './useVoice.ts';
 
 const MODES: { id: ChatMode; label: string; hint: string }[] = [
@@ -125,8 +126,8 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
     if (query === null) {
       return [];
     }
-    return [...filterMenu(buildMenu(chat?.info?.commands ?? null, toolkitItems ?? []), query).slice(0, MENU_SIZE), NEW_COMMAND];
-  }, [query, chat?.info?.commands, toolkitItems]);
+    return [...filterMenu(buildMenu(chat?.info?.commands ?? null, toolkitItems ?? [], chat?.timeline.init?.terminalSlashCommands ?? []), query).slice(0, MENU_SIZE), NEW_COMMAND];
+  }, [query, chat?.info?.commands, toolkitItems, chat?.timeline.init?.terminalSlashCommands]);
   const menuOpen = query !== null;
 
   useEffect(() => {
@@ -164,6 +165,9 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
         break;
       case 'newCommand':
         openToolkit('command');
+        break;
+      case 'terminal':
+        useTerminal.getState().show(claudeCommand({ slash: `/${entry.name}`, windows: navigator.userAgent.includes('Windows') }));
         break;
     }
     setText('');
@@ -362,6 +366,9 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
           Attach
         </button>
         <VoiceButton voice={voice} />
+        <button type="button" className="rounded border border-line px-2 py-1 text-muted hover:text-fg" title="A shell in the project folder; run claude there for anything the app does not cover" onClick={() => (useTerminal.getState().open ? useTerminal.getState().hide() : useTerminal.getState().show())}>
+          Terminal
+        </button>
         <div className="flex-1" />
         {running ? (
           <>

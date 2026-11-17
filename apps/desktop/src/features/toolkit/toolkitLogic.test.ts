@@ -125,6 +125,13 @@ describe('slash menu', () => {
     expect(menu.some((entry) => entry.name === 'compact')).toBe(false);
   });
 
+  it('sends commands Claude Code reports as terminal-only to the terminal pane', () => {
+    const menu = buildMenu([{ name: 'theme', description: 'Change the theme', argumentHint: '', builtin: true }], toolkit, ['/theme', 'config', 'mcp']);
+    expect(menu.find((entry) => entry.name === 'theme')).toMatchObject({ native: 'terminal', description: 'Change the theme' });
+    expect(menu.find((entry) => entry.name === 'config')?.native).toBe('terminal');
+    expect(menu.find((entry) => entry.name === 'mcp')?.native).toBe('toolkit:mcp');
+  });
+
   it('opens only while the command name is being typed, and ranks prefix matches first', () => {
     expect(slashQuery('/')).toBe('');
     expect(slashQuery('/com')).toBe('com');

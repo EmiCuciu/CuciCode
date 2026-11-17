@@ -133,6 +133,8 @@ export interface SystemInitEvent extends EventBase {
   effort: string | null;
   tools: string[];
   slashCommands: string[];
+  /** Commands that only work in the interactive terminal, as reported by Claude Code. */
+  terminalSlashCommands: string[];
   skills: string[];
   agents: string[];
   mcpServers: { name: string; status: string }[];

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { EventCategory } from '@cucicode/protocol';
 import { selectChat, useApp } from '../../state/store.ts';
 import { emptyTimeline } from '../../state/timeline.ts';
+import { TerminalPane } from '../terminal/TerminalPane.tsx';
+import { useTerminal } from '../terminal/terminalStore.ts';
 import { StoryDiffView } from '../workflow/StoryDiffView.tsx';
 import { useWorkflow, workerChatId, type CenterView } from '../workflow/workflowStore.ts';
 import { Composer } from './Composer.tsx';
@@ -90,6 +92,8 @@ function Conversation({ projectId, chatId }: { projectId: string; chatId: string
 
 export function ChatView({ projectId }: { projectId: string }) {
   const view = useWorkflow((state) => state.projects[projectId]?.view ?? MAIN);
+  const terminalOpen = useTerminal((state) => state.open);
+  const cwd = useApp((state) => state.projects.find((project) => project.id === projectId)?.path ?? null);
   return (
     <section className="flex min-w-0 flex-1 flex-col">
       <ViewTabs projectId={projectId} view={view} />
@@ -98,6 +102,7 @@ export function ChatView({ projectId }: { projectId: string }) {
       ) : (
         <Conversation key={view.kind === 'worker' ? view.storyId : 'main'} projectId={projectId} chatId={view.kind === 'worker' ? workerChatId(projectId, view.storyId) : projectId} />
       )}
+      {terminalOpen && cwd && <TerminalPane key={projectId} projectId={projectId} cwd={cwd} />}
     </section>
   );
 }
