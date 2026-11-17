@@ -3,7 +3,9 @@ import { pluginApi, secretsApi, toolkitApi, workflowApi, type GitHostInfo } from
 import type { Project, ToolkitItem } from '../../bridge/types.ts';
 import { setFrontmatterField } from '../toolkit/frontmatterEdit.ts';
 import { CodeRulesCard } from './CodeRulesCard.tsx';
-import { APPROVAL_STAGES, ROLE_INFO, ROLES, sourceOf, type ApprovalStage, type Role, type WorkflowConfig } from './config.ts';
+import { effectiveDefault } from '../defaults/effectiveDefaults.ts';
+import { useResolvedSettings } from '../defaults/useDefaults.ts';
+import { APPROVAL_STAGES, defaultConfig, ROLE_INFO, ROLES, sourceOf, type ApprovalStage, type Role, type WorkflowConfig } from './config.ts';
 import { useWorkflow } from './workflowStore.ts';
 
 const PLUGIN_ID = 'cucicode@cucicode';
@@ -14,6 +16,14 @@ const APPROVAL_LABEL: Record<ApprovalStage, string> = {
   review: 'After review, before merging',
 };
 const input = 'rounded border border-line bg-bg px-2 py-1 outline-none focus:border-accent';
+const DEF = defaultConfig();
+
+function showDefault(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+  return typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value);
+}
 
 function Card({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
   return (
@@ -25,8 +35,11 @@ function Card({ title, note, children }: { title: string; note?: string; childre
   );
 }
 
-function Source({ value }: { value: 'default' | 'project' | 'local' }) {
-  return <span className={`font-mono text-[11px] ${value === 'default' ? 'text-muted' : 'text-accent'}`}>{value}</span>;
+/** Where a value comes from, and what the default is when it was changed. */
+function Source({ value, of }: { value: 'default' | 'project' | 'local'; of?: unknown }) {
+  const fallback = of === undefined ? null : showDefault(of);
+  const text = value === 'default' ? (fallback === null ? 'default' : `default: ${fallback}`) : fallback === null ? value : `${value} · default: ${fallback}`;
+  return <span className={`font-mono text-[11px] ${value === 'default' ? 'text-muted' : 'text-accent'}`}>{text}</span>;
 }
 
 function PluginCard({ project, agents }: { project: Project; agents: ToolkitItem[] }) {
@@ -83,6 +96,10 @@ function RoutingCard({
   const setRole = (role: Role, patch: Partial<WorkflowConfig['routing']['roles'][Role]>): void =>
     save({ ...config.routing, roles: { ...config.routing.roles, [role]: { ...config.routing.roles[role], ...patch } } });
   const predefined = config.routing.mode === 'predefined';
+  const resolved = useResolvedSettings(projectPath);
+  const fallbackInput = { resolved, init: null, overridden: {}, defaultModel: null };
+  const modelDefault = effectiveDefault('model', fallbackInput).value;
+  const effortDefault = effectiveDefault('effort', fallbackInput).value;
   const [error, setError] = useState<string | null>(null);
 
   /** Returns the path of an agent file the user may edit for this role, copying a read-only one into the project first. */
@@ -129,7 +146,7 @@ function RoutingCard({
             {mode === 'auto' ? 'Auto' : 'Predefined'}
           </label>
         ))}
-        <Source value={source} />
+        <Source value={source} of={DEF.routing.mode} />
       </div>
       <table className="w-full border-collapse">
         <thead>
@@ -194,7 +211,7 @@ function RoutingCard({
                     />
                   ) : (
                     <span className="font-mono text-[12px] text-muted" title="Switch to Predefined to set it here">
-                      {sessionRole ? 'default' : (chosen?.model ?? 'inherit')}
+                      {sessionRole ? `default · ${modelDefault}` : (chosen?.model ?? 'inherits the main model')}
                     </span>
                   )}
                 </td>
@@ -211,7 +228,7 @@ function RoutingCard({
                       onBlur={(event) => event.target.value.trim() !== String(chosen.frontmatter.effort ?? '') && void setAgentField(role, 'effort', event.target.value)}
                     />
                   ) : (
-                    <span className="font-mono text-[12px] text-muted">{sessionRole ? 'default' : String(chosen?.frontmatter.effort ?? 'default')}</span>
+                    <span className="font-mono text-[12px] text-muted">{sessionRole ? `default · ${effortDefault}` : String(chosen?.frontmatter.effort ?? `default · ${effortDefault}`)}</span>
                   )}
                 </td>
               </tr>
@@ -369,13 +386,13 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
         {APPROVAL_STAGES.map((stage) => (
           <label key={stage} className="flex items-center gap-2 py-0.5">
             <input type="checkbox" checked={config.pipeline.approvals[stage]} onChange={(event) => save('pipeline', { ...config.pipeline, approvals: { ...config.pipeline.approvals, [stage]: event.target.checked } })} />
-            {APPROVAL_LABEL[stage]}
+            {APPROVAL_LABEL[stage]} <span className="text-[11px] text-muted">(default: {DEF.pipeline.approvals[stage] ? 'on' : 'off'})</span>
           </label>
         ))}
         <label className="mt-2 flex items-center gap-2">
           Automatic fix rounds before a story stops and asks for you
           <input type="number" min={0} max={10} className={`${input} w-16`} value={config.pipeline.maxFixRounds} onChange={(event) => save('pipeline', { ...config.pipeline, maxFixRounds: Number(event.target.value) })} />
-          <Source value={from('pipeline', 'maxFixRounds')} />
+          <Source value={from('pipeline', 'maxFixRounds')} of={DEF.pipeline.maxFixRounds} />
         </label>
       </Card>
 
@@ -400,21 +417,21 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
             <option value="direct">push the branch to origin</option>
             <option value="pr">push the story branch and open a pull request (no local merge)</option>
           </select>
-          <Source value={from('git', 'pushMode')} />
+          <Source value={from('git', 'pushMode')} of={DEF.git.pushMode} />
           <span>Merging a reviewed story</span>
           <select className={input} value={config.git.mergeMode} onChange={(event) => save('git', { ...config.git, mergeMode: event.target.value })}>
             <option value="approval">needs my approval</option>
             <option value="auto">automatic when review approves</option>
           </select>
-          <Source value={from('git', 'mergeMode')} />
+          <Source value={from('git', 'mergeMode')} of={DEF.git.mergeMode} />
           <span>Stories built at the same time</span>
           <input type="number" min={1} max={8} className={`${input} w-20`} value={config.git.maxParallelWorktrees} onChange={(event) => save('git', { ...config.git, maxParallelWorktrees: Number(event.target.value) })} />
-          <Source value={from('git', 'maxParallelWorktrees')} />
+          <Source value={from('git', 'maxParallelWorktrees')} of={DEF.git.maxParallelWorktrees} />
         </div>
         <HostToken projectPath={project.path} needed={config.git.pushMode === 'pr'} />
         <div className="mt-3">
           <div>
-            Protected paths <Source value={from('git', 'protectedPaths')} />
+            Protected paths <Source value={from('git', 'protectedPaths')} of={DEF.git.protectedPaths} />
           </div>
           <p className="text-muted">Agents cannot edit files matching these patterns. Enforced by a hook in the CuciCode plugin, in the app and in the terminal.</p>
           <textarea rows={4} className={`${input} w-full font-mono text-[12px]`} value={paths} onChange={(event) => setPaths(event.target.value)} />
@@ -430,10 +447,10 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
         <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2">
           <span>Most turns one worker task may take (0 = no limit)</span>
           <input type="number" min={0} max={1000} className={`${input} w-20`} value={config.budget.maxTurnsPerTask} onChange={(event) => save('budget', { ...config.budget, maxTurnsPerTask: Number(event.target.value) })} />
-          <Source value={from('budget', 'maxTurnsPerTask')} />
+          <Source value={from('budget', 'maxTurnsPerTask')} of={`${DEF.budget.maxTurnsPerTask} (no limit)`} />
           <span>Warn when the 5-hour window reaches (%)</span>
           <input type="number" min={1} max={100} className={`${input} w-20`} value={config.budget.warnAtPercent} onChange={(event) => save('budget', { ...config.budget, warnAtPercent: Number(event.target.value) })} />
-          <Source value={from('budget', 'warnAtPercent')} />
+          <Source value={from('budget', 'warnAtPercent')} of={`${DEF.budget.warnAtPercent}%`} />
         </div>
         <label className="mt-3 flex flex-wrap items-center gap-2">
           <input type="checkbox" checked={config.budget.downgrade.enabled} onChange={(event) => save('budget', { ...config.budget, downgrade: { ...config.budget.downgrade, enabled: event.target.checked } })} />
@@ -441,7 +458,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
           <input type="number" min={1} max={100} className={`${input} w-16`} value={config.budget.downgrade.atPercent} onChange={(event) => save('budget', { ...config.budget, downgrade: { ...config.budget.downgrade, atPercent: Number(event.target.value) } })} />
           % use
           <input className={`${input} w-24 font-mono text-[12px]`} defaultValue={config.budget.downgrade.model} onBlur={(event) => event.target.value.trim() !== config.budget.downgrade.model && save('budget', { ...config.budget, downgrade: { ...config.budget.downgrade, model: event.target.value.trim() } })} />
-          <Source value={from('budget', 'downgrade')} />
+          <Source value={from('budget', 'downgrade')} of={`off, ${DEF.budget.downgrade.atPercent}%, ${DEF.budget.downgrade.model}`} />
         </label>
         <p className="mt-1 text-[11px] text-muted">The percentage is the one Claude Code last reported, so the switch can lag by a turn. A note appears in the pipeline panel when a worker is downgraded.</p>
       </Card>
@@ -450,7 +467,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
         <label className="flex items-center gap-2">
           Folder
           <input className={`${input} font-mono text-[12px]`} defaultValue={config.stories.folder} onBlur={(event) => event.target.value !== config.stories.folder && save('stories', { target: 'folder', folder: event.target.value })} />
-          <Source value={from('stories', 'folder')} />
+          <Source value={from('stories', 'folder')} of={DEF.stories.folder} />
         </label>
       </Card>
     </div>

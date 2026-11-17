@@ -15,6 +15,8 @@ export interface ModelOption {
   displayName: string;
   description: string;
   effortLevels: string[];
+  /** The concrete model a name such as "default" resolves to, when Claude Code reports it. */
+  resolvedModel: string | null;
 }
 
 export interface CommandOption {

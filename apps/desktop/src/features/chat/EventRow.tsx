@@ -2,6 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { EventCategory, RewindResult } from '@cucicode/protocol';
 import { sidecar } from '../../bridge/tauri.ts';
 import { useNav } from '../../state/nav.ts';
+import { Markdown } from './Markdown.tsx';
 import { useApp } from '../../state/store.ts';
 import { useLearn } from '../learn/ConceptsView.tsx';
 import { concept } from '../learn/concepts.ts';
@@ -202,7 +203,7 @@ function renderEvent(event: DisplayEvent, timeline: TimelineState, hidden: Reado
     case 'user_message':
       return <UserMessage event={event} />;
     case 'assistant_text':
-      return <div className="px-1 py-1 whitespace-pre-wrap">{event.text}</div>;
+      return <Markdown text={event.text} />;
     case 'thinking':
       return (
         <Line category="thinking" tag="thinking" title={event.text.split('\n')[0] ?? ''}>

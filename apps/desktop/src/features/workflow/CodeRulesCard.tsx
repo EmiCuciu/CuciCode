@@ -89,7 +89,7 @@ export function CodeRulesCard({ projectPath, enforce, onEnforce }: { projectPath
       {ENFORCEMENT.map((entry) => (
         <label key={entry.key} className="flex items-center gap-2 py-0.5">
           <input type="checkbox" checked={enforce[entry.key]} onChange={(event) => onEnforce({ ...enforce, [entry.key]: event.target.checked })} />
-          {entry.label}
+          {entry.label} <span className="text-[11px] text-muted">(default: on)</span>
         </label>
       ))}
       <p className="mt-1 text-[11px] text-muted">Edits to protected paths are blocked as well; the patterns are under Git above. Enforcement needs the CuciCode plugin to be installed.</p>

@@ -54,7 +54,7 @@ export function HookForm({ onClose }: { onClose: () => void }) {
           <span className="text-[11px] text-muted">Receives the event as JSON on stdin. Exit code 2 blocks the action for events that can block.</span>
         </label>
         <label className="block">
-          <span className="text-muted">Timeout (seconds, optional)</span>
+          <span className="text-muted">Timeout in seconds (default: 600 for commands)</span>
           <input className={inputClass} value={fields.timeout} onChange={(change) => setFields({ ...fields, timeout: change.target.value })} />
         </label>
         <label className="block">

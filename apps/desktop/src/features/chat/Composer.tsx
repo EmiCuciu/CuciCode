@@ -7,6 +7,7 @@ import { defaultConfig, modeRoute } from '../workflow/config.ts';
 import { useWorkflow } from '../workflow/workflowStore.ts';
 import { useToolkit, type ToolkitTab } from '../toolkit/toolkitStore.ts';
 import { buildMenu, filterMenu, slashQuery, type SlashEntry } from './slashCommands.ts';
+import { useDefaults } from '../defaults/useDefaults.ts';
 import { claudeCommand, useTerminal } from '../terminal/terminalStore.ts';
 import { useVoice, type VoiceControls } from './useVoice.ts';
 
@@ -201,6 +202,8 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
     const added = await Promise.all(Array.from(files, toAttachment));
     setAttachments((current) => [...current, ...added]);
   };
+  const projectPath = useApp((state) => state.projects.find((project) => project.id === projectId)?.path ?? null);
+  const defaultOf = useDefaults(projectPath, chatId);
   const isMain = chatId === projectId;
   const mode: ChatMode = chat?.mode ?? 'chat';
   const config = useWorkflow((state) => state.projects[projectId]?.config);
@@ -317,8 +320,8 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
             ))}
           </div>
         )}
-        <select ref={modelSelect} aria-label="Model" className={selectClass} value={chat?.model ?? ''} onChange={(event) => void setModel(chatId, event.target.value || undefined)}>
-          <option value="">model: default</option>
+        <select ref={modelSelect} aria-label="Model" title={`Default: ${defaultOf('model').value} (${defaultOf('model').source})`} className={selectClass} value={chat?.model ?? ''} onChange={(event) => void setModel(chatId, event.target.value || undefined)}>
+          <option value="">{`model: default · ${defaultOf('model').value}`}</option>
           {models.map((model) => (
             <option key={model.value} value={model.value}>
               {model.displayName}
@@ -332,7 +335,7 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
           title="Changing effort restarts the session process; the conversation is resumed on your next message"
           onChange={(event) => void setEffort(chatId, (event.target.value || undefined) as Effort | undefined)}
         >
-          <option value="">effort: default</option>
+          <option value="">{`effort: default · ${defaultOf('effort').value}`}</option>
           {efforts.map((effort) => (
             <option key={effort} value={effort}>
               {effort}
@@ -347,16 +350,17 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
         >
           {PERMISSION_MODES.map((mode) => (
             <option key={mode} value={mode}>
-              {mode}
+              {mode === defaultOf('permissionMode').value ? `${mode} (default)` : mode}
             </option>
           ))}
         </select>
         {isMain && (
           <select aria-label="Conversation style" className={selectClass} title="Claude Code output style" value={currentStyle ?? ''} onChange={(event) => event.target.value && void changeStyle(event.target.value)}>
-            {currentStyle === null && <option value="">style: default</option>}
+            {currentStyle === null && <option value="">{`style: default · ${defaultOf('outputStyle').value}`}</option>}
             {styles.map((style) => (
               <option key={style} value={style}>
                 style: {style}
+                {style === defaultOf('outputStyle').value ? ' (default)' : ''}
               </option>
             ))}
           </select>

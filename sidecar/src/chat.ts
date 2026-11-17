@@ -130,6 +130,7 @@ export class ChatSession {
         displayName: model.displayName,
         description: model.description,
         effortLevels: model.supportedEffortLevels ?? [],
+        resolvedModel: model.resolvedModel ?? null,
       })),
       commands: commands.map((command) => ({
         name: command.name,

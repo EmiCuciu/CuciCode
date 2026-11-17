@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { schemaDefaultText, unsetText } from '../defaults/effectiveDefaults.ts';
 import published from '../../assets/claude-code-settings.schema.json';
 import { settingsApi } from '../../bridge/tauri.ts';
 import type { Project, ResolvedSetting, ScopeFile, SettingsScope } from '../../bridge/types.ts';
@@ -21,6 +22,8 @@ function Editor({ setting, files, projectPath, onSaved }: { setting: SettingKey;
   const firstSet = writable.find((file) => setting.key in file.value);
   const [scope, setScope] = useState<SettingsScope>(firstSet?.scope ?? (projectPath ? 'local' : 'user'));
   const file = writable.find((candidate) => candidate.scope === scope);
+  const def = schemaDefaultText(setting.key);
+  const unsetLabel = `(not set in this scope${def ? `; default ${def}` : ''})`;
   const current = file?.value[setting.key];
   const [text, setText] = useState(toInput(setting.control, current));
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +70,7 @@ function Editor({ setting, files, projectPath, onSaved }: { setting: SettingKey;
       </div>
       {setting.control === 'boolean' || setting.control === 'enum' ? (
         <select className={inputClass} value={text} onChange={(event) => setText(event.target.value)}>
-          <option value="">(not set in this scope)</option>
+          <option value="">{unsetLabel}</option>
           {(setting.control === 'boolean' ? ['true', 'false'] : setting.options).map((option) => (
             <option key={option} value={option}>
               {option}
@@ -77,7 +80,7 @@ function Editor({ setting, files, projectPath, onSaved }: { setting: SettingKey;
       ) : setting.control === 'json' ? (
         <textarea rows={10} spellCheck={false} className={inputClass} value={text} placeholder="JSON value" onChange={(event) => setText(event.target.value)} />
       ) : (
-        <input className={inputClass} value={text} placeholder="(not set in this scope)" onChange={(event) => setText(event.target.value)} />
+        <input className={inputClass} value={text} placeholder={unsetLabel} onChange={(event) => setText(event.target.value)} />
       )}
       {error && <div className="mt-1 text-bad">{error}</div>}
       <div className="mt-2 flex gap-2">
@@ -101,7 +104,7 @@ function Detail({ setting, files, resolved, projectPath, onSaved }: { setting: S
 
       <h3 className="mb-1 font-mono text-[11px] tracking-wide text-muted uppercase">Effective value</h3>
       {effective.length === 0 ? (
-        <div className="mb-3 text-muted">Not set at any scope; Claude Code uses its default.</div>
+        <div className="mb-3 text-muted">Not set at any scope. {unsetText(setting.key)}</div>
       ) : (
         <table className="mb-3 w-full border-collapse font-mono text-[12px]">
           <tbody>
@@ -195,6 +198,7 @@ export function SettingsView({ project }: { project: Project | null }) {
                   {winner && <span className="text-[11px] text-accent">{winner.scope}</span>}
                 </div>
                 {winner && <div className="truncate font-mono text-[11px] text-muted">{preview(winner.value[setting.key])}</div>}
+                {!winner && schemaDefaultText(setting.key) !== null && <div className="truncate font-mono text-[11px] text-muted/70">default: {schemaDefaultText(setting.key)}</div>}
               </button>
             );
           })}

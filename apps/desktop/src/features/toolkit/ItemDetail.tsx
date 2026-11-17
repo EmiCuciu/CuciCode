@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { mcpApi, settingsApi, toolkitApi, type CliScope } from '../../bridge/tauri.ts';
 import type { ItemScope, ToolkitItem, ValidationProblem } from '../../bridge/types.ts';
+import { HOOK_TIMEOUT_SECONDS } from '../defaults/effectiveDefaults.ts';
 import { removeHook } from './hooks.ts';
 import { useToolkit } from './toolkitStore.ts';
 
@@ -31,7 +32,7 @@ function KindFields({ item }: { item: ToolkitItem }) {
         <Field label="matcher">{show(detail.matcher)}</Field>
         <Field label="type">{show(detail.type)}</Field>
         <Field label="runs">{show(detail.run)}</Field>
-        <Field label="timeout">{detail.timeout === null || detail.timeout === undefined ? 'default' : `${show(detail.timeout)}s`}</Field>
+        <Field label="timeout">{detail.timeout === null || detail.timeout === undefined ? `default (${HOOK_TIMEOUT_SECONDS[String(detail.type)] ?? 600}s)` : `${show(detail.timeout)}s`}</Field>
       </>
     );
   }
@@ -48,7 +49,7 @@ function KindFields({ item }: { item: ToolkitItem }) {
   if (item.kind === 'agent') {
     return (
       <>
-        <Field label="model">{item.model ?? 'inherits'}</Field>
+        <Field label="model">{item.model ?? 'inherits the main model'}</Field>
         <Field label="tools">{show(item.frontmatter.tools ?? 'all (inherited)')}</Field>
         <Field label="skills">{show(item.frontmatter.skills)}</Field>
       </>

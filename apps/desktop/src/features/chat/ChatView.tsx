@@ -7,6 +7,7 @@ import { useTerminal } from '../terminal/terminalStore.ts';
 import { StoryDiffView } from '../workflow/StoryDiffView.tsx';
 import { useWorkflow, workerChatId, type CenterView } from '../workflow/workflowStore.ts';
 import { Composer } from './Composer.tsx';
+import { Markdown } from './Markdown.tsx';
 import { ChatIdContext, Rows } from './EventRow.tsx';
 import { FilterChips } from './FilterChips.tsx';
 
@@ -76,7 +77,7 @@ function Conversation({ projectId, chatId }: { projectId: string; chatId: string
           {timeline.draft && !hidden.has('thinking') && timeline.draft.thinking && (
             <div className="border-l-2 border-line pl-3 text-muted whitespace-pre-wrap">{timeline.draft.thinking}</div>
           )}
-          {timeline.draft && timeline.draft.text && <div className="px-1 py-1 whitespace-pre-wrap">{timeline.draft.text}</div>}
+          {timeline.draft && timeline.draft.text && <Markdown text={timeline.draft.text} />}
           {timeline.runState !== 'idle' && (
             <div className="font-mono text-[11px] text-muted">
               {timeline.runState === 'requires_action' ? 'waiting for you' : (timeline.status ?? 'working')}…
