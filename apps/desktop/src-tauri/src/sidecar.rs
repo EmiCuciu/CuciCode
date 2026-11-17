@@ -122,7 +122,7 @@ impl Sidecar {
             .arg(&script)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .kill_on_drop(true);
         #[cfg(windows)]
         {
@@ -132,6 +132,15 @@ impl Sidecar {
         let mut child = command.spawn().map_err(|error| AppError::Sidecar(format!("cannot start node: {error}")))?;
         let stdin = child.stdin.take().ok_or_else(|| AppError::Sidecar("sidecar has no stdin".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| AppError::Sidecar("sidecar has no stdout".into()))?;
+
+        if let Some(stderr) = child.stderr.take() {
+            tauri::async_runtime::spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    eprintln!("[sidecar] {line}");
+                }
+            });
+        }
 
         let app = self.app.clone();
         let shared = Arc::clone(&self.shared);
