@@ -36,6 +36,8 @@ export interface ChatInfo {
   subscriptionType: string | null;
   authSource: string | null;
   context: ContextUsage | null;
+  outputStyle: string | null;
+  outputStyles: string[];
 }
 
 /** What rewinding files to a user message would change, or did change. */

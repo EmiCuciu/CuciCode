@@ -22,6 +22,7 @@ interface SidecarResults {
   'chat.setModel': null;
   'chat.setPermissionMode': null;
   'chat.info': ChatInfo;
+  'chat.setOutputStyle': null;
   'chat.rewind': RewindResult;
   'chat.close': null;
   'permission.respond': null;

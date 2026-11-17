@@ -117,11 +117,12 @@ export class ChatSession {
   }
 
   async info(): Promise<ChatInfo> {
-    const [models, commands, account, context] = await Promise.all([
+    const [models, commands, account, context, init] = await Promise.all([
       this.query.supportedModels(),
       this.query.supportedCommands(),
       this.query.accountInfo(),
       this.query.getContextUsage().catch(() => null),
+      this.query.initializationResult().catch(() => null),
     ]);
     return {
       models: models.map((model) => ({
@@ -141,7 +142,14 @@ export class ChatSession {
       context: context
         ? { usedTokens: context.totalTokens, maxTokens: context.rawMaxTokens, percentage: context.percentage }
         : null,
+      outputStyle: init?.output_style ?? null,
+      outputStyles: init?.available_output_styles ?? [],
     };
+  }
+
+  /** Same path as /output-style: written to the project's local settings and applied from the next message. */
+  async setOutputStyle(style: string): Promise<void> {
+    await this.query.updateSettings('localSettings', { outputStyle: style });
   }
 
   close(): void {

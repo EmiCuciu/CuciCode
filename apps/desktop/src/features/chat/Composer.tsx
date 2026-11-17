@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import type { Attachment, Effort, PermissionMode } from '@cucicode/protocol';
 import { useNav } from '../../state/nav.ts';
+import { settingsApi, sidecar } from '../../bridge/tauri.ts';
 import { useApp, type ChatMode, type ChatState } from '../../state/store.ts';
 import { defaultConfig, modeRoute } from '../workflow/config.ts';
 import { useWorkflow } from '../workflow/workflowStore.ts';
@@ -13,6 +14,9 @@ const MODES: { id: ChatMode; label: string; hint: string }[] = [
   { id: 'brainstorm', label: 'Brainstorm', hint: 'Explore an idea with the planner model before deciding; your first message starts /cucicode:brainstorm' },
   { id: 'plan', label: 'Plan', hint: 'Planner model in plan mode: Claude researches and proposes a plan, and changes nothing until you approve' },
 ];
+
+/** Shown before Claude Code reports the list, which also includes custom styles. */
+const BUILT_IN_STYLES = ['default', 'Concise', 'Explanatory', 'Learning', 'Proactive'];
 
 const MENU_SIZE = 10;
 const NEW_COMMAND: SlashEntry = { name: 'New command…', description: 'Create your own slash command (opens Toolkit → Commands)', argumentHint: '', source: 'CuciCode', native: 'newCommand' };
@@ -165,6 +169,24 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
     setText('');
   };
 
+  const [styleNote, setStyleNote] = useState<string | null>(null);
+  const currentStyle = chat?.info?.outputStyle ?? chat?.timeline.init?.outputStyle ?? null;
+  const styles = Array.from(new Set([...(chat?.info?.outputStyles ?? BUILT_IN_STYLES), ...(currentStyle ? [currentStyle] : [])]));
+  const changeStyle = async (style: string): Promise<void> => {
+    try {
+      if (chat?.open) {
+        await sidecar('chat.setOutputStyle', { chatId, style });
+        await useApp.getState().refreshInfo(chatId);
+      } else {
+        const path = useApp.getState().projects.find((project) => project.id === projectId)?.path ?? null;
+        await settingsApi.setValue('local', path, 'outputStyle', style);
+      }
+      setStyleNote(`Style ${style} applies from your next message (saved in .claude/settings.local.json).`);
+    } catch (reason) {
+      setStyleNote(String(reason));
+    }
+  };
+
   const running = chat !== null && chat.timeline.runState !== 'idle';
   const models = chat?.info?.models ?? FALLBACK_MODELS;
   const activeModel = chat?.info?.models.find((model) => model.value === chat.model);
@@ -252,6 +274,14 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
           ))}
         </div>
       )}
+      {styleNote && (
+        <div className="mb-1 flex gap-2 text-[11px] text-muted">
+          <span className="flex-1">{styleNote}</span>
+          <button type="button" onClick={() => setStyleNote(null)}>
+            ×
+          </button>
+        </div>
+      )}
       {menuOpen && <SlashMenu entries={menu} active={Math.min(menuIndex, menu.length - 1)} onChoose={choose} onHover={setMenuIndex} />}
       <textarea
         value={text}
@@ -317,6 +347,16 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
             </option>
           ))}
         </select>
+        {isMain && (
+          <select aria-label="Conversation style" className={selectClass} title="Claude Code output style" value={currentStyle ?? ''} onChange={(event) => event.target.value && void changeStyle(event.target.value)}>
+            {currentStyle === null && <option value="">style: default</option>}
+            {styles.map((style) => (
+              <option key={style} value={style}>
+                style: {style}
+              </option>
+            ))}
+          </select>
+        )}
         <input ref={fileInput} type="file" multiple hidden onChange={(event) => event.target.files && void addFiles(event.target.files)} />
         <button type="button" className="rounded border border-line px-2 py-1 text-muted hover:text-fg" onClick={() => fileInput.current?.click()}>
           Attach
