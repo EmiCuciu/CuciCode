@@ -118,6 +118,16 @@ async fn cucicode_settings_set(project_path: PathBuf, local: bool, key: String, 
 }
 
 #[tauri::command]
+async fn cucicode_user_settings_get() -> AppResult<serde_json::Map<String, Value>> {
+    blocking(|| settings::cucicode::read_user_settings(&settings::cucicode::user_settings_path()?)).await
+}
+
+#[tauri::command]
+async fn cucicode_user_settings_set(key: String, value: Value) -> AppResult<()> {
+    blocking(move || settings::cucicode::set_user_setting(&settings::cucicode::user_settings_path()?, &key, value)).await
+}
+
+#[tauri::command]
 async fn pipeline_state_get(project_path: PathBuf) -> AppResult<Value> {
     blocking(move || settings::cucicode::read_pipeline_state(&project_path)).await
 }
@@ -545,6 +555,8 @@ pub fn run() {
             cucicode_project_ui_set,
             cucicode_settings_get,
             cucicode_settings_set,
+            cucicode_user_settings_get,
+            cucicode_user_settings_set,
             pipeline_state_get,
             pipeline_state_set,
             stories_list,
