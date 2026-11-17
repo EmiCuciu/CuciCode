@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex as SyncMutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex};
@@ -16,6 +16,9 @@ use crate::error::{AppError, AppResult};
 pub const SIDECAR_EVENT: &str = "sidecar://event";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const DEFAULT_SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sidecar/dist/sidecar.mjs");
+
+const BUNDLED_SCRIPT: &str = "sidecar/sidecar.mjs";
+const BUNDLED_NODE: &str = if cfg!(windows) { "node.exe" } else { "node" };
 
 type Reply = Result<Value, String>;
 
@@ -81,20 +84,39 @@ impl Sidecar {
         Self { app, shared: Arc::new(Shared::default()) }
     }
 
-    fn script_path() -> PathBuf {
-        std::env::var_os("CUCICODE_SIDECAR").map_or_else(|| PathBuf::from(DEFAULT_SCRIPT), PathBuf::from)
+    fn script_path(&self) -> PathBuf {
+        if let Some(path) = std::env::var_os("CUCICODE_SIDECAR") {
+            return PathBuf::from(path);
+        }
+        self.app
+            .path()
+            .resource_dir()
+            .map(|dir| dir.join(BUNDLED_SCRIPT))
+            .ok()
+            .filter(|path| path.is_file())
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_SCRIPT))
+    }
+
+    fn node_program() -> std::ffi::OsString {
+        if let Some(node) = std::env::var_os("CUCICODE_NODE") {
+            return node;
+        }
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join(BUNDLED_NODE)))
+            .filter(|path| path.is_file())
+            .map_or_else(|| "node".into(), PathBuf::into_os_string)
     }
 
     fn spawn(&self) -> AppResult<ChildStdin> {
-        let script = Self::script_path();
+        let script = self.script_path();
         if !script.is_file() {
             return Err(AppError::Sidecar(format!(
                 "{} not found; run \"npm run build:sidecar\" in the repository root",
                 script.display()
             )));
         }
-        let node = std::env::var_os("CUCICODE_NODE").unwrap_or_else(|| "node".into());
-        let mut command = Command::new(node);
+        let mut command = Command::new(Self::node_program());
         command.env_clear().envs(crate::system_env::current());
         command
             .arg(&script)

@@ -34,6 +34,8 @@ use stories::{FolderTarget, StoriesTarget, Story};
 use sidecar::Sidecar;
 use toolkit::model::{ItemKind, ItemScope};
 
+const BUNDLED_MARKETPLACE: &str = "marketplace";
+
 async fn blocking<T, F>(work: F) -> AppResult<T>
 where
     T: Send + 'static,
@@ -300,9 +302,10 @@ async fn pipeline_commit_docs(project_path: PathBuf, message: String) -> AppResu
 
 /// Where the CuciCode plugin marketplace lives, so the app can offer to install it.
 #[tauri::command]
-fn plugin_source() -> String {
+fn plugin_source(app: AppHandle) -> String {
     std::env::var("CUCICODE_PLUGIN_SOURCE").unwrap_or_else(|_| {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..");
+        let bundled = app.path().resource_dir().ok().map(|dir| dir.join(BUNDLED_MARKETPLACE)).filter(|dir| dir.is_dir());
+        let root = bundled.unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join(".."));
         root.canonicalize().unwrap_or(root).display().to_string().trim_start_matches(r"\\?\").to_owned()
     })
 }
@@ -539,6 +542,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             app.manage(Sidecar::new(app.handle().clone()));
             app.manage(toolkit::watch::ToolkitWatcher::default());

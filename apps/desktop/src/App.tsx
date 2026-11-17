@@ -13,6 +13,8 @@ import { UsageView } from './features/usage/UsageView.tsx';
 import { ConceptsView } from './features/learn/ConceptsView.tsx';
 import { ActivityView } from './features/activity/ActivityView.tsx';
 import { useActivity } from './features/activity/activityStore.ts';
+import { UpdateBanner } from './features/updates/UpdateBanner.tsx';
+import { useUpdates } from './features/updates/updateStore.ts';
 import { WorkflowSettings } from './features/workflow/WorkflowSettings.tsx';
 import { useWorkflow } from './features/workflow/workflowStore.ts';
 import { useNav } from './state/nav.ts';
@@ -63,6 +65,9 @@ export function App() {
     }
     const { receive, loadProjects } = useApp.getState();
     void useActivity.getState().load();
+    if (import.meta.env.PROD) {
+      void useUpdates.getState().checkForUpdate();
+    }
     const unlisten = onSidecarEvent(receive);
     void loadProjects();
     return () => {
@@ -73,6 +78,7 @@ export function App() {
   return (
     <div className="flex h-full flex-col">
       <TopBar project={project} chat={chat} theme={theme} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+      <UpdateBanner />
       {!desktop && <div className="bg-warn/15 px-3 py-1 text-warn">Running in a browser without the desktop shell: start the app with "npm run dev" from the repository root.</div>}
       {workflowError && (
         <div className="flex items-center gap-3 bg-bad/15 px-3 py-1 text-bad">

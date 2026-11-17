@@ -24,8 +24,22 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVGN0REMDNBQTFGQjAzNDUKUldSRkEvdWhPdEI5NzBka1RMK1FGYklOaHN4RlFGcFk1S212K3U1enFFeEhQRzFWLy8xc2FhQ1UK",
+      "endpoints": ["https://github.com/EmiCuciu/CuciCode/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
-    "active": false,
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["nsis"],
+    "externalBin": ["binaries/node"],
+    "resources": {
+      "resources/sidecar/": "sidecar/",
+      "resources/marketplace/": "marketplace/"
+    },
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
   }
 }

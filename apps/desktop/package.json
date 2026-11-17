@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "dev:web": "npm --prefix ../.. run build:sidecar && vite",
-    "build:web": "npm --prefix ../.. run build:sidecar && vite build",
+    "stage": "node scripts/stage-bundle.mjs",
+    "dev:web": "npm --prefix ../.. run build:sidecar && npm run stage && vite",
+    "build:web": "npm --prefix ../.. run build:sidecar && npm run stage && vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "tauri": "tauri"
@@ -18,6 +19,8 @@
     "@tauri-apps/plugin-dialog": "2.8.4",
     "@tauri-apps/plugin-notification": "2.8.1",
     "@tauri-apps/plugin-opener": "2.7.3",
+    "@tauri-apps/plugin-process": "2.4.0",
+    "@tauri-apps/plugin-updater": "2.14.1",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "react": "19.3.1",
