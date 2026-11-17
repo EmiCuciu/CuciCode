@@ -26,6 +26,8 @@ export interface ChatState {
   allowedTools: string[];
   /** Stops a turn after this many steps; unset means no limit. */
   maxTurns: number | undefined;
+  /** Leaves out the user's MCP servers and unrelated skills, for pipeline workers that only need to code. */
+  lean: boolean;
   mode: ChatMode;
   resumeSessionId: string | null;
   info: ChatInfo | null;
@@ -40,6 +42,7 @@ const newChat = (): ChatState => ({
   cwd: null,
   allowedTools: [],
   maxTurns: undefined,
+  lean: false,
   mode: 'chat',
   resumeSessionId: null,
   info: null,
@@ -71,7 +74,7 @@ interface AppState {
   setModel: (projectId: string, model: string | undefined) => Promise<void>;
   setEffort: (projectId: string, effort: Effort | undefined) => Promise<void>;
   closeChat: (chatId: string) => Promise<void>;
-  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode' | 'allowedTools' | 'maxTurns'>>) => void;
+  configureChat: (chatId: string, patch: Partial<Pick<ChatState, 'cwd' | 'model' | 'effort' | 'permissionMode' | 'allowedTools' | 'maxTurns' | 'lean'>>) => void;
   applyMode: (chatId: string, mode: ChatMode, route: { model: string | undefined; effort: Effort | undefined; permissionMode: PermissionMode }) => Promise<void>;
   setPermissionMode: (projectId: string, mode: PermissionMode) => Promise<void>;
   toggleCategory: (projectId: string, category: EventCategory) => Promise<void>;
@@ -132,6 +135,7 @@ export const useApp = create<AppState>((set, get) => {
       permissionMode: current.permissionMode,
       allowedTools: current.allowedTools.length > 0 ? current.allowedTools : undefined,
       maxTurns: current.maxTurns,
+      lean: current.lean,
     });
     patchChat(id, { open: true });
   };

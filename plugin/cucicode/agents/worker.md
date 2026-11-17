@@ -1,6 +1,7 @@
 ---
 name: worker
 description: Implements exactly one story from Stories/ in its own git worktree, then runs the project's checks. Use to build a story after stories are approved.
+tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 model: sonnet
 isolation: worktree
 ---

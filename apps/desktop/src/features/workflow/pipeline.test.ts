@@ -78,6 +78,21 @@ describe('feature stages', () => {
     const run = play([START, { type: 'main_turn_done' }, { type: 'approve' }, { type: 'main_turn_done' }, { type: 'stories_loaded', stories: [] }], cfg).run;
     expect(run).toMatchObject({ stage: 'stories', status: 'waiting' });
   });
+
+  it('recovers when the stories were written after they were counted', () => {
+    const cfg = config();
+    const empty = play([START, { type: 'main_turn_done' }, { type: 'approve' }, { type: 'main_turn_done' }, { type: 'stories_loaded', stories: [] }], cfg).run;
+    const rechecked = step(empty, { type: 'recheck_stories' }, cfg);
+    expect(rechecked.run.status).toBe('working');
+    expect(types(rechecked.effects)).toEqual(['load_stories']);
+    expect(step(rechecked.run, TWO_STORIES, cfg).run).toMatchObject({ stage: 'stories', status: 'waiting', awaiting: 'stories' });
+  });
+
+  it('ignores a recheck outside a stalled story stage', () => {
+    const cfg = config();
+    const planning = step(newRun(), START, cfg).run;
+    expect(step(planning, { type: 'recheck_stories' }, cfg).effects).toEqual([]);
+  });
 });
 
 describe('story flow', () => {

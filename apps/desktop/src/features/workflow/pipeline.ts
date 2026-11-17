@@ -56,6 +56,7 @@ export type PipelineEvent =
   | { type: 'main_turn_done' }
   | { type: 'main_turn_failed'; error: string }
   | { type: 'retry_stage' }
+  | { type: 'recheck_stories' }
   | { type: 'stories_loaded'; stories: { id: string; dependsOn: string[] }[] }
   | { type: 'approve'; storyId?: string }
   | { type: 'reject'; storyId?: string; reason: string }
@@ -275,6 +276,8 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         : none;
     case 'retry_stage':
       return run.status === 'waiting' && run.awaiting === null && (run.stage === 'plan' || run.stage === 'stories' || run.stage === 'brainstorm' || isOnboardStage(run.stage)) ? enterStage(run, run.stage, config) : none;
+    case 'recheck_stories':
+      return run.stage === 'stories' && run.status === 'waiting' && run.awaiting === null ? { run: log({ ...run, status: 'working' }, 'Checking for stories.'), effects: [{ type: 'load_stories' }] } : none;
     case 'stories_loaded': {
       if (run.stage !== 'stories') {
         return none;

@@ -52,8 +52,8 @@ const DEFAULT_MODELS: Record<Role, [model: string, effort: string]> = {
   worker: ['sonnet', ''],
   reviewerLogic: ['sonnet', ''],
   reviewerSecurity: ['sonnet', ''],
-  reviewerUi: ['sonnet', ''],
-  reviewerCodeRules: ['sonnet', ''],
+  reviewerUi: ['haiku', ''],
+  reviewerCodeRules: ['haiku', ''],
 };
 
 function defaultRoles(): Record<Role, RoleRoute> {

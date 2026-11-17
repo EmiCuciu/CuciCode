@@ -122,6 +122,7 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
       effort: route.effort as Effort | undefined,
       maxTurns: route.maxTurns,
       permissionMode: 'acceptEdits',
+      lean: true,
       allowedTools: workerAllowedTools(workflow?.checkCommands ?? []),
     });
     return chatId;
@@ -327,6 +328,9 @@ function onChatEvent(chatId: string, event: TimelineEvent): void {
   const dispatch = useWorkflow.getState().dispatch;
   const error = event.errors.join('; ') || event.subtype;
   if (storyId === null) {
+    if (!event.isError && subagentsRunning(chatId)) {
+      return;
+    }
     void dispatch(projectId, event.isError ? { type: 'main_turn_failed', error } : { type: 'main_turn_done' });
   } else if (event.isError) {
     void dispatch(projectId, { type: 'worker_failed', storyId, error: `the worker turn stopped: ${error}` });

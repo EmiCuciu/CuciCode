@@ -8,6 +8,9 @@ import type { ChatEmit, PermissionBroker } from './permissions.ts';
 
 type ContentBlock = Record<string, unknown>;
 
+/** The only skills a pipeline worker needs; every other skill is left out of its context. */
+const LEAN_SKILLS = ['cucicode:build', 'cucicode:fix', 'cucicode:review'] as const;
+
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 export function attachmentToBlock(attachment: Attachment): ContentBlock {
@@ -54,6 +57,7 @@ export class ChatSession {
         canUseTool: broker.canUseToolFor(params.chatId),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         settingSources: ['user', 'project', 'local'],
+        ...(params.lean ? { strictMcpConfig: true, skills: [...LEAN_SKILLS] } : {}),
         includePartialMessages: true,
         enableFileCheckpointing: true,
         extraArgs: { 'replay-user-messages': null },

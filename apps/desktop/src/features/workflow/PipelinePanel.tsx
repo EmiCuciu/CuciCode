@@ -191,6 +191,11 @@ function RunView({ projectId, run }: { projectId: string; run: FeatureRun }) {
       {stalled && run.stage !== 'brainstorm' && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-warn">This stage stopped before finishing.</span>
+          {run.stage === 'stories' && (
+            <button type="button" className={primary} onClick={() => void dispatch(projectId, { type: 'recheck_stories' })}>
+              Check for stories
+            </button>
+          )}
           <button type="button" className={button} onClick={() => void dispatch(projectId, { type: 'retry_stage' })}>
             Run it again
           </button>

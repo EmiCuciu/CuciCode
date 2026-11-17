@@ -10,4 +10,6 @@ Use the `cucicode:story-writer` agent. It writes one file per story in `Stories/
 
 Every new story keeps `status: todo`; do not invent other status values.
 
+Wait until the agent has finished and every story file is written before you write anything else: do not end your turn while it is still running, even if it runs in the background. The pipeline counts the files in `Stories/` when your turn ends. List `Stories/` to confirm the files exist.
+
 When it finishes, show me a table of the stories (id, title, owned files, depends on) and point out any two stories whose owned files overlap. Do not start building: the stories need my approval first.
