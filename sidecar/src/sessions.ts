@@ -6,7 +6,7 @@ import {
   renameSession,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { MethodParams, SessionSummary, TimelineEvent } from '@cucicode/protocol';
-import { normalizeMessage } from './normalize.ts';
+import { normalizeMessage, recordedAt } from './normalize.ts';
 
 export async function listProjectSessions(params: MethodParams<'sessions.list'>): Promise<SessionSummary[]> {
   const sessions = await listSessions({ dir: params.cwd, limit: params.limit });
@@ -25,8 +25,9 @@ export async function listProjectSessions(params: MethodParams<'sessions.list'>)
 
 export async function loadSessionEvents(params: MethodParams<'sessions.messages'>): Promise<TimelineEvent[]> {
   const messages = await getSessionMessages(params.sessionId, { dir: params.cwd });
-  const ctx = { source: 'history' as const, now: () => null };
-  return messages.flatMap((message) => normalizeMessage(message, ctx));
+  return messages.flatMap((message) =>
+    normalizeMessage(message, { source: 'history', now: () => recordedAt(message) }),
+  );
 }
 
 export async function renameProjectSession(params: MethodParams<'sessions.rename'>): Promise<void> {

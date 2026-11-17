@@ -44,6 +44,12 @@ function strArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+export function recordedAt(message: unknown): number | null {
+  if (!isDict(message) || typeof message.timestamp !== 'string') return null;
+  const epochMs = Date.parse(message.timestamp);
+  return Number.isNaN(epochMs) ? null : epochMs;
+}
+
 export function classifyTool(toolName: string, input: unknown): Pick<ToolCallEvent, 'category' | 'mcp' | 'skillName' | 'subagentType'> {
   const fields = isDict(input) ? input : {};
   if (SUBAGENT_TOOLS.has(toolName)) {
