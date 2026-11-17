@@ -133,7 +133,7 @@ Name, location, stack template, then checkboxes: git init; generate `.gitignore`
 ## 11. Conversation style, Code Rules, Learn mode
 
 - **Conversation style:** implemented with Claude Code output styles. "Concise", "Explanatory" and "Learning" are already built into Claude Code, so CuciCode ships none of its own; it switches between them through the native `outputStyle` setting, in settings and in chat. Concise is the default for new projects.
-- **Code Rules:** editable list in Settings, stored in the CuciCode plugin. Split into:
+- **Code Rules:** editable list in Settings. Guidance is stored in `.claude/rules/cucicode-code-rules.md` (Claude Code does not load instruction files from plugins); enforcement hooks ship in the CuciCode plugin. Split into:
   - *Guidance* (rule text loaded as instructions and checked by the code-rules reviewer): no code comments; Javadoc on service classes; no hardcoded values (use config); naming and structure conventions.
   - *Enforcement* (hooks that block): secrets or API keys in source; env values inlined in code; `.env` missing from `.gitignore`; edits to protected paths.
 - **Learn mode:** "Explain" on any timeline event gives a short, accurate explanation of what happened and why (what a hook is and which one fired, what this MCP call did, why a subagent was spawned, what compaction did). A **Concepts** page covers: compact vs clear, MCP and how it works, agent vs subagent, skill, hook, Agent SDK vs hooks, custom slash commands, plugins and marketplaces, output styles, worktrees. Content is written once from the docs and linked from events.

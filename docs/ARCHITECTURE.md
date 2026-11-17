@@ -107,8 +107,8 @@ Claude Code settings are read from and written to Claude Code's own files; CuciC
 |---|---|
 | Protocol package | Done |
 | Sidecar | Done, unit-tested, smoke-tested against the real SDK |
-| UI | Phase 1: shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter. Phase 2: Toolkit screen, settings editor, slash-command menu. Logic is unit-tested; screens were checked by launching the app |
-| Rust core | Sidecar supervisor, settings resolver and editor, project registry, Toolkit scanner and editor, file watcher, Claude CLI wrapper, keychain secrets. Unit-tested |
+| UI | Phase 1: shell, projects sidebar, chat with typed timeline and filter chips, permission prompts, sessions, context meter. Phase 2: Toolkit screen, settings editor, slash-command menu. Phase 3: pipeline panel, worker sessions, diff, Inbox, workflow settings. Phase 4: Usage, Concepts and Explain, Activity, terminal pane, new-project wizard, style picker. Logic is unit-tested; screens were checked by launching the app |
+| Rust core | Sidecar supervisor, settings resolver and editor, project registry, Toolkit scanner and editor, file watcher, Claude CLI wrapper, keychain secrets, worktrees and checks, git hosts, usage reader, activity log, pseudo-terminals, project scaffolding. Unit-tested |
 | Voice input | Push-to-talk recording and local transcription. Compiles; audio conversion is unit-tested; not yet tried with a microphone |
 
 ## Toolkit
@@ -175,6 +175,38 @@ Rewind exists in two forms (ADR 23): file rewind on a chat message through Claud
 Checkpoints (after plan, after stories, after checks, after review) are per project; anything waiting, any failed story and any permission request appears in the **Inbox** in the top bar.
 
 The chat's mode toggle maps to the planner role: **Brainstorm** and **Plan** switch to the planner's model and effort, and Plan also uses Claude Code's `plan` permission mode.
+
+## Usage
+
+Two sources, labelled differently on screen (ADR 26):
+
+| Figure | Source | Label |
+|---|---|---|
+| 5-hour and weekly percentage, reset time | `cachedUsageUtilization` in `~/.claude.json`, which Claude Code fetches from Anthropic | reported, with the time it was fetched |
+| "Runs out at …" | utilisation divided by the time since the window opened, extended at the same pace | estimate |
+| Tokens per model, role, agent, project, session | assistant messages in `~/.claude/projects/**.jsonl`, each message counted once (`usage.rs`) | counted |
+
+Story worktrees have their own transcript folder (`<project>--claude-worktrees-<story>`), which is how worker usage is attributed to its project and to the Worker role. Budget guardrails (max turns per worker task, warning threshold, optional worker downgrade near the limit) are in `.claude/cucicode/settings.json` under `budget`.
+
+## Code Rules
+
+Guidance rules are bullet points in `.claude/rules/cucicode-code-rules.md`, a native Claude Code rules file loaded in every session and read by the code-rules reviewer. Enforcement is `plugin/cucicode/hooks/code-rules.mjs`, a `PreToolUse` hook on file-changing tools that blocks secrets in source, values from `.env` files copied into code, and writing a `.env` file git would not ignore. Each check can be turned off under `codeRules.enforce` (ADR 27).
+
+## Learn mode
+
+`features/learn/concepts.ts` holds the Concepts page, written once from the documentation. `explain.ts` turns a timeline event into a short explanation using only that event's fields and links it to a concept; no model is called (ADR 28).
+
+## Activity and notifications
+
+`activity.rs` appends entries to `~/.claude/cucicode/activity.local.jsonl` and trims it to the last 2000. The UI records finished and failed turns, permission requests, pipeline log lines and checkpoints. Entries that need the user raise an OS notification when the window is not focused.
+
+## Terminal pane
+
+`pty.rs` runs the user's shell in a pseudo-terminal (`portable-pty`, ConPTY on Windows) and streams it to `xterm.js`. Slash commands that Claude Code reports as terminal-only (`terminal_slash_commands` in its init message) open the pane running `claude '/command'` (ADR 29).
+
+## New-project wizard
+
+`scaffold.rs` creates the folder, starter files for an empty, Node, Python or Rust project, `.gitignore`, a starter `CLAUDE.md`, `Stories/` and `Plans/`, the Concise output style, Code Rules and pipeline settings, then runs `git init` with a first commit. The wizard then creates a remote repository if asked, installs plugins and opens the project. A summary is shown before anything is created, and each step reports its own result (ADR 30).
 
 ## Settings editor
 

@@ -175,3 +175,39 @@ Short architecture decision records. Newest last.
 ## 25. Onboarding an existing project uses the same engine (2026-11-16)
 
 **Decision.** Map, baseline, scope, audit and backlog are a second stage list in the same state machine (`kind: 'onboard'`). Each stage sends `/cucicode:onboard <stage>` to the main thread, writes one file under `Plans/onboarding/`, and always waits for approval, because each stage's output is what the next one trusts.
+
+## 26. Usage figures come from Claude Code's own cache and from transcripts (2026-11-17)
+
+**Context.** The spec asked for the 5-hour window and weekly limit, labelled as estimates if no exact figure is available. The SDK only reports limits when their state changes (`rate_limit_event`), and there is no documented usage API.
+
+**Finding.** Claude Code stores the last utilisation it fetched from Anthropic in `~/.claude.json` (`cachedUsageUtilization`: percentage and reset time for the 5-hour and 7-day windows, plus the fetch time). This is an undocumented internal field.
+
+**Decision.** Show those percentages as "reported" with the time they were fetched, mark a window as stale once its reset time has passed, and label the run-out projection an estimate. Token breakdowns are counted from transcripts, reading each assistant message's `usage` once (a message can appear on several lines). Both readers are isolated in `usage.rs`, so a format change touches one file.
+
+**Consequence.** No CuciCode-side accounting is needed, and the numbers match what Claude Code itself shows. If Claude Code stops caching the figures, the meters show "no data" and the token tables still work.
+
+## 27. Code Rules guidance is a project rules file, not plugin content (2026-11-17)
+
+**Context.** The spec said Code Rules are stored in the CuciCode plugin. Claude Code does not load instruction files from plugins, and installed plugins are read-only copies.
+
+**Decision.** Guidance rules live in `.claude/rules/cucicode-code-rules.md`, created and edited from Settings → Workflow. Enforcement stays in the plugin as hooks, because hooks are code that must run in every session, including the terminal.
+
+**Consequence.** The rules are loaded natively, can be committed for the team, and the code-rules reviewer reads them with the rest of `.claude/rules/`. The hook tests run real files through the same script Claude Code runs.
+
+## 28. "Explain" is built from the event, not asked of a model (2026-11-17)
+
+**Decision.** Each explanation is assembled from the event's own fields (which tool, which hook and its exit code, token counts before and after compaction) plus a link to a Concepts page written from the documentation.
+
+**Consequence.** Explain is instant, always the same for the same event, costs no usage, and cannot invent behaviour. It cannot answer follow-up questions; for that, ask in the chat.
+
+## 29. The terminal pane is a real shell, used for terminal-only commands (2026-11-17)
+
+**Decision.** `portable-pty` runs the user's shell; `xterm.js` renders it. The commands that need it are taken from Claude Code's own `terminal_slash_commands` list rather than a hardcoded one, and open as `claude '/command'`, a new terminal session that does not resume the chat's session (two processes writing one session would diverge).
+
+**Finding.** On Windows, ConPTY asks the terminal for the cursor position (`ESC[6n`) at start-up and waits for the answer before producing any output. xterm.js answers it automatically; the test that runs a real command through ConPTY answers it explicitly.
+
+## 30. The new-project wizard reports each step and never rolls back (2026-11-17)
+
+**Decision.** Local steps run in one Rust call that returns a result per step; remote creation, plugin installation and opening the project follow as separate calls. A failed step is shown with its error and the earlier steps are kept.
+
+**Consequence.** A half-created project is visible and fixable rather than silently deleted, which matters once a remote repository exists. The starter templates are minimal and each passes its own test command (verified for Node in a test). Remote creation through the GitHub and Bitbucket APIs is tested for request shape only, not against a live host.
