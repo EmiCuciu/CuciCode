@@ -17,6 +17,7 @@ pub const SIDECAR_EVENT: &str = "sidecar://event";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const DEFAULT_SCRIPT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sidecar/dist/sidecar.mjs");
 
+const VERBATIM_PREFIX: &str = r"\\?\";
 const BUNDLED_SCRIPT: &str = "sidecar/sidecar.mjs";
 const BUNDLED_NODE: &str = if cfg!(windows) { "node.exe" } else { "node" };
 
@@ -91,7 +92,7 @@ impl Sidecar {
         self.app
             .path()
             .resource_dir()
-            .map(|dir| dir.join(BUNDLED_SCRIPT))
+            .map(|dir| PathBuf::from(dir.join(BUNDLED_SCRIPT).to_string_lossy().trim_start_matches(VERBATIM_PREFIX)))
             .ok()
             .filter(|path| path.is_file())
             .unwrap_or_else(|| PathBuf::from(DEFAULT_SCRIPT))
