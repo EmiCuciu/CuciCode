@@ -8,6 +8,7 @@ import { ProjectsSidebar } from './features/projects/ProjectsSidebar.tsx';
 import { SettingsView } from './features/settings/SettingsView.tsx';
 import { ToolkitView } from './features/toolkit/ToolkitView.tsx';
 import { UsageView } from './features/usage/UsageView.tsx';
+import { ConceptsView } from './features/learn/ConceptsView.tsx';
 import { WorkflowSettings } from './features/workflow/WorkflowSettings.tsx';
 import { useWorkflow } from './features/workflow/workflowStore.ts';
 import { useNav } from './state/nav.ts';
@@ -105,7 +106,8 @@ export function App() {
         )}
         {section === 'toolkit' && <ToolkitView />}
         {section === 'usage' && <UsageView />}
-        {section !== 'projects' && section !== 'settings' && section !== 'toolkit' && section !== 'usage' && (
+        {section === 'concepts' && <ConceptsView />}
+        {section !== 'projects' && section !== 'settings' && section !== 'toolkit' && section !== 'usage' && section !== 'concepts' && (
           <div className="flex flex-1 items-center justify-center text-muted">This section arrives in Phase {sectionPhase(section)}.</div>
         )}
       </div>

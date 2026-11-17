@@ -1,7 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { EventCategory, RewindResult } from '@cucicode/protocol';
 import { sidecar } from '../../bridge/tauri.ts';
+import { useNav } from '../../state/nav.ts';
 import { useApp } from '../../state/store.ts';
+import { useLearn } from '../learn/ConceptsView.tsx';
+import { concept } from '../learn/concepts.ts';
+import { explain } from '../learn/explain.ts';
 import { buildRows, hasChildren, type DisplayEvent, type TimelineRow, type TimelineState } from '../../state/timeline.ts';
 
 const CATEGORY_TONE: Record<EventCategory, string> = {
@@ -265,10 +269,44 @@ function renderEvent(event: DisplayEvent, timeline: TimelineState, hidden: Reado
   }
 }
 
+function Explain({ event }: { event: DisplayEvent }) {
+  const [open, setOpen] = useState(false);
+  const explanation = event.kind === 'user_message' || event.kind === 'assistant_text' ? null : explain(event);
+  if (explanation === null) {
+    return null;
+  }
+  const linked = explanation.conceptId ? concept(explanation.conceptId) : undefined;
+  return (
+    <div className="pl-3">
+      <button type="button" className="font-mono text-[11px] text-muted hover:text-accent" onClick={() => setOpen(!open)}>
+        {open ? '▾' : '▸'} explain
+      </button>
+      {open && (
+        <div className="mt-1 mb-1 rounded border border-line bg-panel p-2 text-[12px]">
+          {explanation.text}
+          {linked && (
+            <button
+              type="button"
+              className="ml-2 text-accent hover:underline"
+              onClick={() => {
+                useLearn.getState().show(linked.id);
+                useNav.getState().go('concepts');
+              }}
+            >
+              More: {linked.title} →
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Row({ row, timeline, hidden }: { row: TimelineRow; timeline: TimelineState; hidden: ReadonlySet<EventCategory> }) {
   return (
     <div className="relative">
       {renderEvent(row.event, timeline, hidden)}
+      <Explain event={row.event} />
       {row.repeat > 1 && <span className="absolute top-1 right-1 rounded bg-raised px-1.5 font-mono text-[11px] text-muted">×{row.repeat}</span>}
     </div>
   );
