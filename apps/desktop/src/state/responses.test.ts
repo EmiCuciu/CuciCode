@@ -98,7 +98,7 @@ describe('responseMarks', () => {
   it('returns no duration when a timestamp is missing or the end precedes the start', () => {
     expect(responseMarks(fromHistory([user('u', null), text('a', 2000)]), null).durations.size).toBe(0);
     expect(responseMarks(fromHistory([user('u', 1000), text('a', 2000), result('r', null)]), null).durations.size).toBe(0);
-    expect(responseMarks(fromHistory([user('u', 5000), text('a', 2000)]), null).durations.size).toBe(0);
+    expect(responseMarks(fromHistory([user('u', 5000), text('a', 6000), result('r', 2000)]), null).durations.size).toBe(0);
   });
 
   it('places the duration after the last visible row and drops it when none is visible', () => {
