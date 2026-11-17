@@ -107,6 +107,8 @@ function withAgent(prompt: string, config: WorkflowConfig, roles: Role[]): strin
   return swaps.length === 0 ? prompt : `${prompt}\n\n${swaps.map((swap) => `Use the \`${swap.to}\` agent instead of \`${swap.from}\`.`).join('\n')}`;
 }
 
+export const NO_VERDICT = 'the review ended without a RESULT line';
+
 const REVIEWERS: Role[] = ['reviewerLogic', 'reviewerSecurity', 'reviewerCodeRules', 'reviewerUi'];
 
 /** Reads the verdict line the review skill ends with. */
@@ -339,6 +341,16 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       if (!story) {
         return none;
       }
+      if (story.stage === 'failed' && story.note === NO_VERDICT) {
+        const late = reviewResult(event.text);
+        if (late === 'approved') {
+          return afterReviewApproved({ ...log(run, `${story.id}: the review verdict arrived late.`), status: 'working' }, story.id, config);
+        }
+        if (late === 'changes_requested') {
+          return sendBack(log(run, `${story.id}: the review verdict arrived late.`), story.id, config, `The review requested changes. Fix the blocking findings below.\n\n${event.text}`, 'review requested changes');
+        }
+        return none;
+      }
       if (story.stage === 'building' || story.stage === 'fixing') {
         return { run: log(setStory(run, story.id, { stage: 'checks' }), `${story.id}: running checks.`), effects: [{ type: 'run_checks', storyId: story.id }] };
       }
@@ -350,7 +362,7 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         if (result === 'changes_requested') {
           return sendBack(run, story.id, config, `The review requested changes. Fix the blocking findings below.\n\n${event.text}`, 'review requested changes');
         }
-        const failed = log(setStory(run, story.id, { stage: 'failed', note: 'the review ended without a RESULT line' }), `${story.id}: the review gave no verdict.`);
+        const failed = log(setStory(run, story.id, { stage: 'failed', note: NO_VERDICT }), `${story.id}: the review gave no verdict.`);
         const scheduled = schedule(failed, config);
         return { run: scheduled.run, effects: [...scheduled.effects, { type: 'notify', text: `${story.id} needs you: the review gave no verdict` }] };
       }
@@ -387,8 +399,12 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       return { run: scheduled.run, effects: [...scheduled.effects, { type: 'notify', text: `${event.storyId} needs you: ${event.error}` }] };
     }
     case 'retry': {
-      if (run.stories[event.storyId]?.stage !== 'failed') {
+      const failed = run.stories[event.storyId];
+      if (failed?.stage !== 'failed') {
         return none;
+      }
+      if (failed.note === NO_VERDICT) {
+        return startReview({ ...log(setStory(run, failed.id, { note: null }), `${failed.id}: review started again.`), status: 'working' }, failed.id, config);
       }
       return schedule(log(setStory(run, event.storyId, { stage: 'queued', fixRounds: 0, note: null }), `${event.storyId}: queued again.`), config);
     }

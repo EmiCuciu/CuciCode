@@ -80,6 +80,16 @@ async function releaseWorktree(projectId: string, storyId: string): Promise<void
   }
 }
 
+/**
+ * Claude Code can run subagents in the background and end its turn while they work, then continue
+ * in a later turn when they report back. A turn that ends with subagents still running is not the
+ * stage's result, so the pipeline waits for the turn that ends with none running.
+ */
+function subagentsRunning(chatId: string): boolean {
+  const events = useApp.getState().chats[chatId]?.timeline.events ?? [];
+  return events.some((event) => event.kind === 'subagent' && event.status === 'running');
+}
+
 function failedOutput(run: CheckRun): string {
   const failed = run.results.find((result) => !result.passed);
   return failed ? `$ ${failed.command}\n(exit ${failed.exitCode ?? 'none'})\n\n${failed.output}` : '';
@@ -321,6 +331,9 @@ function onChatEvent(chatId: string, event: TimelineEvent): void {
   } else if (event.isError) {
     void dispatch(projectId, { type: 'worker_failed', storyId, error: `the worker turn stopped: ${error}` });
   } else {
+    if (subagentsRunning(chatId)) {
+      return;
+    }
     const text = lastAssistantText(chatId);
     const stage = workflow.run.stories[storyId]?.stage ?? 'work';
     const path = useApp.getState().projects.find((project) => project.id === projectId)?.path;

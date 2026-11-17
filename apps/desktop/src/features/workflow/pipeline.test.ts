@@ -360,3 +360,27 @@ describe('building stories that already exist', () => {
     expect(step(newRun(), { type: 'start_build', feature: 'x', stories: [] }, config()).effects).toEqual([]);
   });
 });
+
+describe('review verdicts that arrive after the turn ended', () => {
+  const inReview = (cfg: WorkflowConfig): FeatureRun => {
+    const built = step(toBuild(cfg), { type: 'worker_turn_done', storyId: 'S-001', text: '' }, cfg).run;
+    return step(built, { type: 'checks_done', storyId: 'S-001', passed: true, output: '' }, cfg).run;
+  };
+
+  it('applies a late approved verdict to a story that failed for lack of one', () => {
+    const cfg = config();
+    const noVerdict = step(inReview(cfg), { type: 'worker_turn_done', storyId: 'S-001', text: 'The three reviewers are still running.' }, cfg).run;
+    expect(noVerdict.stories['S-001']).toMatchObject({ stage: 'failed', note: 'the review ended without a RESULT line' });
+    const late = step(noVerdict, { type: 'worker_turn_done', storyId: 'S-001', text: 'All approved.\nRESULT: approved' }, cfg);
+    expect(late.run.stories['S-001']).toMatchObject({ stage: 'awaiting_approval', awaiting: 'review' });
+    expect(step(noVerdict, { type: 'worker_turn_done', storyId: 'S-001', text: 'still nothing' }, cfg).effects).toEqual([]);
+  });
+
+  it('retries only the review, not the build, after a missing verdict', () => {
+    const cfg = config();
+    const noVerdict = step(inReview(cfg), { type: 'worker_turn_done', storyId: 'S-001', text: 'running…' }, cfg).run;
+    const retried = step(noVerdict, { type: 'retry', storyId: 'S-001' }, cfg);
+    expect(retried.run.stories['S-001']?.stage).toBe('review');
+    expect(retried.effects).toEqual([{ type: 'send_worker', storyId: 'S-001', prompt: '/cucicode:review S-001' }]);
+  });
+});

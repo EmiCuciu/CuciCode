@@ -1,6 +1,6 @@
 {
   "name": "cucicode",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The CuciCode agentic workflow: pipeline roles, reviewers and protected-path enforcement",
   "author": {
     "name": "CuciCode"
