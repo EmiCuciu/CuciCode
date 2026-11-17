@@ -5,6 +5,7 @@ import { Inspector } from './features/inspector/Inspector.tsx';
 import { LeftRail, sectionPhase } from './features/layout/LeftRail.tsx';
 import { TopBar } from './features/layout/TopBar.tsx';
 import { ProjectsSidebar } from './features/projects/ProjectsSidebar.tsx';
+import { AppSettingsView } from './features/settings/AppSettingsView.tsx';
 import { SettingsView } from './features/settings/SettingsView.tsx';
 import { ToolkitView } from './features/toolkit/ToolkitView.tsx';
 import { NewProjectWizard } from './features/projects/NewProjectWizard.tsx';
@@ -19,6 +20,13 @@ import { selectChat, useApp } from './state/store.ts';
 
 type Theme = 'dark' | 'light';
 const THEME_KEY = 'cucicode.theme';
+const SETTINGS_TABS = ['claude', 'workflow', 'app'] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+const SETTINGS_TAB_LABEL: Record<SettingsTab, string> = {
+  claude: 'Claude Code settings',
+  workflow: 'Workflow (CuciCode)',
+  app: 'CuciCode app',
+};
 
 function storedTheme(): Theme {
   return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
@@ -35,7 +43,7 @@ export function App() {
   const error = useApp((state) => state.error);
   const dismissError = useApp((state) => state.dismissError);
   const desktop = inDesktopShell();
-  const [settingsTab, setSettingsTab] = useState<'claude' | 'workflow'>(import.meta.env.VITE_START_SETTINGS_TAB === 'workflow' ? 'workflow' : 'claude');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>(import.meta.env.VITE_START_SETTINGS_TAB === 'workflow' ? 'workflow' : 'claude');
   const workflowError = useWorkflow((state) => state.error);
 
   useEffect(() => {
@@ -102,13 +110,15 @@ export function App() {
         {section === 'settings' && (
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex gap-1 border-b border-line px-3 py-1">
-              {(['claude', 'workflow'] as const).map((tab) => (
+              {SETTINGS_TABS.map((tab) => (
                 <button key={tab} type="button" aria-current={settingsTab === tab} className={`rounded px-2 py-1 ${settingsTab === tab ? 'bg-raised text-fg' : 'text-muted hover:text-fg'}`} onClick={() => setSettingsTab(tab)}>
-                  {tab === 'claude' ? 'Claude Code settings' : 'Workflow (CuciCode)'}
+                  {SETTINGS_TAB_LABEL[tab]}
                 </button>
               ))}
             </div>
-            <div className="flex min-h-0 flex-1">{settingsTab === 'claude' ? <SettingsView project={project} /> : <WorkflowSettings project={project} />}</div>
+            <div className="flex min-h-0 flex-1">{settingsTab === 'claude' && <SettingsView project={project} />}
+              {settingsTab === 'workflow' && <WorkflowSettings project={project} />}
+              {settingsTab === 'app' && <AppSettingsView />}</div>
           </div>
         )}
         {section === 'toolkit' && <ToolkitView />}
