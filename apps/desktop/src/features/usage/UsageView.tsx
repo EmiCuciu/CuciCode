@@ -29,6 +29,8 @@ const RANGES = [
 ] as const;
 type RangeId = (typeof RANGES)[number]['id'];
 
+const REFRESH_MS = 60_000;
+
 const time = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const dayTime = (ms: number): string => new Date(ms).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -148,6 +150,8 @@ export function UsageView() {
   }, []);
   useEffect(() => {
     void load();
+    const timer = setInterval(() => void load(), REFRESH_MS);
+    return () => clearInterval(timer);
   }, [load]);
 
   const agentRoles = useMemo(() => {
@@ -195,8 +199,8 @@ export function UsageView() {
       </div>
       <p className="mb-4 text-[11px] text-muted">
         {limits
-          ? `The percentages and reset times are what Claude Code last fetched from Anthropic, at ${dayTime(limits.fetchedAtMs)}; they are not live. `
-          : 'Claude Code has not stored usage figures on this machine yet; they appear after a session with a Pro, Max or Team login. '}
+          ? `The percentages and reset times were fetched from Anthropic at ${dayTime(limits.fetchedAtMs)} and refresh every minute. If you are signed out or offline, the last figures Claude Code stored are shown instead. `
+          : 'No usage figures are available yet; sign in to Claude Code with a Pro, Max or Team login. '}
         The projections are estimates: utilisation divided by the time since the window opened, extended at the same pace. Token counts below are read from session transcripts on this machine, counting each assistant message once.
       </p>
 

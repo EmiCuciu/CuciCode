@@ -1,7 +1,7 @@
 import type { CommandOption } from '@cucicode/protocol';
 import type { ToolkitItem } from '../../bridge/types.ts';
 
-export type NativeAction = 'model' | 'toolkit:agent' | 'toolkit:mcp' | 'toolkit:hook' | 'toolkit:plugins' | 'newCommand' | 'terminal';
+export type NativeAction = 'model' | 'toolkit:agent' | 'toolkit:mcp' | 'toolkit:hook' | 'toolkit:plugins' | 'newCommand' | 'terminal' | 'usage';
 
 export interface SlashEntry {
   name: string;
@@ -18,6 +18,7 @@ const NATIVE: Record<string, { action: NativeAction; description: string }> = {
   mcp: { action: 'toolkit:mcp', description: 'Manage MCP servers (opens Toolkit → MCP)' },
   hooks: { action: 'toolkit:hook', description: 'Manage hooks (opens Toolkit → Hooks)' },
   plugin: { action: 'toolkit:plugins', description: 'Manage plugins and marketplaces (opens Toolkit → Plugins)' },
+  usage: { action: 'usage', description: 'Show live usage limits and token breakdown (opens Usage)' },
 };
 
 /** Shown before a session has started, when Claude Code has not reported its command list yet. */
@@ -25,7 +26,6 @@ const BEFORE_SESSION: { name: string; description: string }[] = [
   { name: 'clear', description: 'Start over with an empty context' },
   { name: 'compact', description: 'Summarise the conversation to free context' },
   { name: 'context', description: 'Show what is using the context window' },
-  { name: 'usage', description: 'Show token usage for this session' },
   { name: 'init', description: 'Create a CLAUDE.md for this project' },
   { name: 'review', description: 'Review the current changes' },
 ];

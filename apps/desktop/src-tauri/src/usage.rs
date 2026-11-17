@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::time::UNIX_EPOCH;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -11,6 +11,11 @@ use crate::error::AppResult;
 use crate::jsonfile::read_optional;
 
 const HOUR_MS: u64 = 3_600_000;
+const LIVE_TIMEOUT_SECONDS: u64 = 8;
+const USAGE_ENDPOINT_ENV: &str = "CUCICODE_USAGE_URL";
+const USAGE_BETA_ENV: &str = "CUCICODE_USAGE_BETA";
+const DEFAULT_USAGE_ENDPOINT: &str = "https://api.anthropic.com/api/oauth/usage";
+const DEFAULT_USAGE_BETA: &str = "oauth-2025-04-20";
 
 /// One usage window as Claude Code last fetched it from Anthropic.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -40,8 +45,57 @@ pub fn parse_limits(state: &Value) -> Option<ReportedLimits> {
     Some(ReportedLimits { fetched_at_ms: cached.get("fetchedAtMs")?.as_u64()?, five_hour: window(utilization, "five_hour"), seven_day: window(utilization, "seven_day") })
 }
 
-pub fn reported_limits(state_file: &Path) -> AppResult<Option<ReportedLimits>> {
+pub fn cached_limits(state_file: &Path) -> AppResult<Option<ReportedLimits>> {
     Ok(read_optional(state_file)?.as_ref().and_then(parse_limits))
+}
+
+/// Where the live figures come from, so a changed endpoint needs no rebuild.
+pub struct LiveSource {
+    pub credentials_file: PathBuf,
+    pub endpoint: String,
+    pub beta_header: String,
+}
+
+impl LiveSource {
+    pub fn from_environment(credentials_file: PathBuf) -> Self {
+        let setting = |name: &str, default: &str| std::env::var(name).ok().filter(|value| !value.is_empty()).unwrap_or_else(|| default.to_owned());
+        Self { credentials_file, endpoint: setting(USAGE_ENDPOINT_ENV, DEFAULT_USAGE_ENDPOINT), beta_header: setting(USAGE_BETA_ENV, DEFAULT_USAGE_BETA) }
+    }
+}
+
+/// The login token Claude Code stored, unless it has already expired (refreshing it is Claude Code's job).
+pub fn access_token(credentials: &Value, now_ms: u64) -> Option<String> {
+    let login = credentials.get("claudeAiOauth")?;
+    let token = login.get("accessToken")?.as_str()?;
+    let still_valid = login.get("expiresAt").and_then(Value::as_u64).map_or(true, |expires_at| expires_at > now_ms);
+    (still_valid && !token.is_empty()).then(|| token.to_owned())
+}
+
+/// Parses the endpoint's answer, which has the same shape as the cached `utilization` object.
+pub fn parse_live_limits(body: &Value, fetched_at_ms: u64) -> Option<ReportedLimits> {
+    let (five_hour, seven_day) = (window(body, "five_hour"), window(body, "seven_day"));
+    (five_hour.is_some() || seven_day.is_some()).then_some(ReportedLimits { fetched_at_ms, five_hour, seven_day })
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_millis() as u64)
+}
+
+fn fetch_live(source: &LiveSource) -> Option<ReportedLimits> {
+    let now = now_ms();
+    let token = access_token(read_optional(&source.credentials_file).ok().flatten().as_ref()?, now)?;
+    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(LIVE_TIMEOUT_SECONDS))).build().into();
+    let mut response = agent.get(&source.endpoint).header("Authorization", &format!("Bearer {token}")).header("anthropic-beta", &source.beta_header).header("User-Agent", "cucicode").call().ok()?;
+    let body: Value = serde_json::from_str(&response.body_mut().read_to_string().ok()?).ok()?;
+    parse_live_limits(&body, now)
+}
+
+/// The current figures from Anthropic, falling back to what Claude Code last cached when the live request is not possible.
+pub fn reported_limits(state_file: &Path, source: &LiveSource) -> AppResult<Option<ReportedLimits>> {
+    match fetch_live(source) {
+        Some(live) => Ok(Some(live)),
+        None => cached_limits(state_file),
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -266,6 +320,18 @@ mod tests {
         assert!(agents.contains(&("cucicode:explorer", 4)));
         assert!(agents.contains(&("subagent", 1)));
         assert!(rows.iter().all(|row| row.project == "C--work-app" && row.session_id == "sess1"));
+    }
+
+    #[test]
+    fn reads_a_live_answer_and_only_trusts_an_unexpired_token() {
+        let body = json!({ "five_hour": { "utilization": 12.5, "resets_at": "2026-11-17T20:00:00+00:00" }, "seven_day": null });
+        let limits = parse_live_limits(&body, 42).unwrap();
+        assert_eq!((limits.fetched_at_ms, limits.five_hour.map(|w| w.utilization), limits.seven_day), (42, Some(12.5), None));
+        assert_eq!(parse_live_limits(&json!({ "error": "x" }), 1), None);
+        let credentials = json!({ "claudeAiOauth": { "accessToken": "tok", "expiresAt": 2000u64 } });
+        assert_eq!(access_token(&credentials, 1000).as_deref(), Some("tok"));
+        assert_eq!(access_token(&credentials, 3000), None);
+        assert_eq!(access_token(&json!({}), 0), None);
     }
 
     #[test]

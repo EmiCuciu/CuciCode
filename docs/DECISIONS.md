@@ -211,3 +211,11 @@ Short architecture decision records. Newest last.
 **Decision.** Local steps run in one Rust call that returns a result per step; remote creation, plugin installation and opening the project follow as separate calls. A failed step is shown with its error and the earlier steps are kept.
 
 **Consequence.** A half-created project is visible and fixable rather than silently deleted, which matters once a remote repository exists. The starter templates are minimal and each passes its own test command (verified for Node in a test). Remote creation through the GitHub and Bitbucket APIs is tested for request shape only, not against a live host.
+
+## 30. Usage limits are fetched live; `/usage` opens the Usage screen (2026-11-17)
+
+**Context.** Decision 26 relied on `cachedUsageUtilization`, which only changes when Claude Code itself fetches, for example when `/usage` runs in the terminal.
+
+**Decision.** `usage.rs` asks Anthropic's OAuth usage endpoint for the 5-hour and weekly figures, using the login token Claude Code stores in `.credentials.json`, and falls back to the cached figures when the token is missing, expired or the request fails. The endpoint and beta header can be overridden with `CUCICODE_USAGE_URL` and `CUCICODE_USAGE_BETA`. The Usage screen and top bar re-read every minute. `/usage` in the composer opens the Usage screen instead of asking Claude Code.
+
+**Consequence.** The endpoint is undocumented and may change; the fallback keeps the screen working. CuciCode never refreshes the token, so an expired login shows cached figures until Claude Code runs once.

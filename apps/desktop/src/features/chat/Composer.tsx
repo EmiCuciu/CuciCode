@@ -167,6 +167,9 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
       case 'newCommand':
         openToolkit('command');
         break;
+      case 'usage':
+        useNav.getState().go('usage');
+        break;
       case 'terminal':
         useTerminal.getState().show(claudeCommand({ slash: `/${entry.name}`, windows: navigator.userAgent.includes('Windows') }));
         break;
@@ -220,6 +223,11 @@ export function Composer({ projectId, chatId, chat }: { projectId: string; chatI
       return;
     }
     const trimmed = text.trim();
+    if (trimmed === '/usage' && attachments.length === 0) {
+      useNav.getState().go('usage');
+      setText('');
+      return;
+    }
     const outgoing = mode === 'brainstorm' && modeIsFresh && !trimmed.startsWith('/') ? `/cucicode:brainstorm ${trimmed}` : trimmed;
     void send(chatId, outgoing, attachments, interruptFirst);
     setModeIsFresh(false);

@@ -40,7 +40,7 @@ function ReportedWindow({ refreshKey }: { refreshKey: unknown }) {
     <button
       type="button"
       className={`font-mono text-[11px] ${tone}`}
-      title={`Reported by Claude Code at ${at(limits.fetchedAtMs)}; the run-out time is an estimate. Click for details.`}
+      title={`Fetched from Anthropic at ${at(limits.fetchedAtMs)}; the run-out time is an estimate. Click for details.`}
       onClick={() => useNav.getState().go('usage')}
     >
       5h window {percent}%{tail ? ` · ${tail}` : ''}

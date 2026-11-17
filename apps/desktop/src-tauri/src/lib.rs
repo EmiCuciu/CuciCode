@@ -404,16 +404,20 @@ async fn project_create_remote(project_path: PathBuf, host: git_host::NewRepoHos
 #[tauri::command]
 async fn usage_report(since_ms: u64) -> AppResult<UsageReport> {
     blocking(move || {
-        let limits = usage::reported_limits(&paths::claude_user_state_file()?)?;
+        let limits = live_limits()?;
         let rows = usage::scan(&paths::claude_config_dir()?.join("projects"), since_ms);
         Ok(UsageReport { limits, rows })
     })
     .await
 }
 
+fn live_limits() -> AppResult<Option<usage::ReportedLimits>> {
+    usage::reported_limits(&paths::claude_user_state_file()?, &usage::LiveSource::from_environment(paths::claude_credentials_file()?))
+}
+
 #[tauri::command]
 async fn usage_limits() -> AppResult<Option<usage::ReportedLimits>> {
-    blocking(|| usage::reported_limits(&paths::claude_user_state_file()?)).await
+    blocking(live_limits).await
 }
 
 #[tauri::command]
