@@ -7,6 +7,8 @@ import { useApp } from '../../state/store.ts';
 import { useLearn } from '../learn/ConceptsView.tsx';
 import { concept } from '../learn/concepts.ts';
 import { explain } from '../learn/explain.ts';
+import { responseMarks } from '../../state/responses.ts';
+import { MessageTime, ResponseTime } from './MessageTime.tsx';
 import { buildRows, hasChildren, type DisplayEvent, type TimelineRow, type TimelineState } from '../../state/timeline.ts';
 
 const CATEGORY_TONE: Record<EventCategory, string> = {
@@ -105,6 +107,7 @@ function UserMessage({ event }: { event: Extract<DisplayEvent, { kind: 'user_mes
 
   return (
     <div className="group rounded bg-raised px-3 py-2">
+      <MessageTime ts={event.ts} />
       <div className="whitespace-pre-wrap">
         {event.text}
         {event.attachmentCount > 0 && <span className="ml-2 font-mono text-[11px] text-muted">+{event.attachmentCount} attachment(s)</span>}
@@ -198,12 +201,17 @@ function ToolCall({ event, timeline, hidden }: { event: Extract<DisplayEvent, { 
   );
 }
 
-function renderEvent(event: DisplayEvent, timeline: TimelineState, hidden: ReadonlySet<EventCategory>): ReactNode {
+function renderEvent(event: DisplayEvent, timeline: TimelineState, hidden: ReadonlySet<EventCategory>, stamped: boolean): ReactNode {
   switch (event.kind) {
     case 'user_message':
       return <UserMessage event={event} />;
     case 'assistant_text':
-      return <Markdown text={event.text} />;
+      return (
+        <>
+          {stamped && <MessageTime ts={event.ts} />}
+          <Markdown text={event.text} />
+        </>
+      );
     case 'thinking':
       return (
         <Line category="thinking" tag="thinking" title={event.text.split('\n')[0] ?? ''}>
@@ -303,21 +311,23 @@ function Explain({ event }: { event: DisplayEvent }) {
   );
 }
 
-function Row({ row, timeline, hidden }: { row: TimelineRow; timeline: TimelineState; hidden: ReadonlySet<EventCategory> }) {
+function Row({ row, timeline, hidden, stamped, duration }: { row: TimelineRow; timeline: TimelineState; hidden: ReadonlySet<EventCategory>; stamped: boolean; duration: number | undefined }) {
   return (
     <div className="relative">
-      {renderEvent(row.event, timeline, hidden)}
+      {renderEvent(row.event, timeline, hidden, stamped)}
       <Explain event={row.event} />
       {row.repeat > 1 && <span className="absolute top-1 right-1 rounded bg-raised px-1.5 font-mono text-[11px] text-muted">×{row.repeat}</span>}
+      {duration !== undefined && <ResponseTime ms={duration} />}
     </div>
   );
 }
 
 export function Rows({ timeline, parentToolUseId, hidden }: { timeline: TimelineState; parentToolUseId: string | null; hidden: ReadonlySet<EventCategory> }) {
+  const marks = responseMarks(timeline, parentToolUseId, hidden);
   return (
     <>
       {buildRows(timeline.events, parentToolUseId, hidden).map((row) => (
-        <Row key={row.event.id} row={row} timeline={timeline} hidden={hidden} />
+        <Row key={row.event.id} row={row} timeline={timeline} hidden={hidden} stamped={marks.stampIds.has(row.event.id)} duration={marks.durations.get(row.event.id)} />
       ))}
     </>
   );
