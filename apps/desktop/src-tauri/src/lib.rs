@@ -1,3 +1,4 @@
+mod activity;
 mod checks;
 mod claude_cli;
 mod error;
@@ -331,6 +332,20 @@ struct UsageReport {
 }
 
 /// Reported window figures plus token usage counted from transcripts since a point in time.
+fn activity_file() -> AppResult<PathBuf> {
+    Ok(paths::claude_config_dir()?.join(paths::CUCICODE_DIR).join("activity.local.jsonl"))
+}
+
+#[tauri::command]
+async fn activity_append(entry: activity::ActivityEntry) -> AppResult<()> {
+    blocking(move || activity::append(&activity_file()?, &entry)).await
+}
+
+#[tauri::command]
+async fn activity_list(limit: usize) -> AppResult<Vec<activity::ActivityEntry>> {
+    blocking(move || activity::list(&activity_file()?, limit)).await
+}
+
 #[tauri::command]
 async fn usage_report(since_ms: u64) -> AppResult<UsageReport> {
     blocking(move || {
@@ -505,6 +520,8 @@ pub fn run() {
             checks_commands,
             checks_run,
             usage_report,
+            activity_append,
+            activity_list,
             usage_limits,
             toolkit_scan,
             toolkit_watch,

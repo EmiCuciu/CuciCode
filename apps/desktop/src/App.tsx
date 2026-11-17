@@ -9,6 +9,8 @@ import { SettingsView } from './features/settings/SettingsView.tsx';
 import { ToolkitView } from './features/toolkit/ToolkitView.tsx';
 import { UsageView } from './features/usage/UsageView.tsx';
 import { ConceptsView } from './features/learn/ConceptsView.tsx';
+import { ActivityView } from './features/activity/ActivityView.tsx';
+import { useActivity } from './features/activity/activityStore.ts';
 import { WorkflowSettings } from './features/workflow/WorkflowSettings.tsx';
 import { useWorkflow } from './features/workflow/workflowStore.ts';
 import { useNav } from './state/nav.ts';
@@ -50,6 +52,7 @@ export function App() {
       return;
     }
     const { receive, loadProjects } = useApp.getState();
+    void useActivity.getState().load();
     const unlisten = onSidecarEvent(receive);
     void loadProjects();
     return () => {
@@ -107,7 +110,8 @@ export function App() {
         {section === 'toolkit' && <ToolkitView />}
         {section === 'usage' && <UsageView />}
         {section === 'concepts' && <ConceptsView />}
-        {section !== 'projects' && section !== 'settings' && section !== 'toolkit' && section !== 'usage' && section !== 'concepts' && (
+        {section === 'activity' && <ActivityView />}
+        {section !== 'projects' && section !== 'settings' && section !== 'toolkit' && section !== 'usage' && section !== 'concepts' && section !== 'activity' && (
           <div className="flex flex-1 items-center justify-center text-muted">This section arrives in Phase {sectionPhase(section)}.</div>
         )}
       </div>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Effort, TimelineEvent } from '@cucicode/protocol';
 import { usageApi, workflowApi, type CheckRun, type Story, type Worktree } from '../../bridge/tauri.ts';
 import { chatListeners, useApp } from '../../state/store.ts';
+import { kindOfLogLine, newLogLines, useActivity } from '../activity/activityStore.ts';
 import { defaultConfig, resolveConfig, workerRoute, type WorkflowConfig } from './config.ts';
 import { isUsageLimitText, newRun, pendingItems, step, workerAllowedTools, type Effect, type FeatureRun, type PipelineEvent } from './pipeline.ts';
 
@@ -233,6 +234,16 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
         return;
       }
       patch(projectId, { run: result.run });
+      const record = useActivity.getState().record;
+      const before = workflow.run && workflow.run.feature === result.run.feature ? workflow.run.log : [];
+      for (const line of newLogLines(before, result.run.log)) {
+        record({ projectId, kind: kindOfLogLine(line), text: `${result.run.feature}: ${line}`, needsUser: false });
+      }
+      for (const effect of result.effects) {
+        if (effect.type === 'notify') {
+          record({ projectId, kind: 'approval', text: effect.text, needsUser: true });
+        }
+      }
       try {
         await workflowApi.saveState(projectPath(projectId), { run: result.run });
         for (const effect of result.effects) {
