@@ -6,6 +6,8 @@ import { TerminalPane } from '../terminal/TerminalPane.tsx';
 import { useTerminal } from '../terminal/terminalStore.ts';
 import { StoryDiffView } from '../workflow/StoryDiffView.tsx';
 import { useWorkflow, workerChatId, type CenterView } from '../workflow/workflowStore.ts';
+import { useAppSettings } from '../settings/appSettingsStore.ts';
+import { MessageTimeContext } from './MessageTime.tsx';
 import { Composer } from './Composer.tsx';
 import { Markdown } from './Markdown.tsx';
 import { ChatIdContext, Rows } from './EventRow.tsx';
@@ -55,7 +57,13 @@ function Conversation({ projectId, chatId }: { projectId: string; chatId: string
   const hiddenList = useApp((state) => state.hiddenCategories[projectId] ?? NO_HIDDEN);
   const hidden = useMemo(() => new Set(hiddenList), [hiddenList]);
   const timeline = chat?.timeline ?? emptyTimeline;
+  const timestampFormat = useAppSettings((state) => state.settings.chat.timestamps);
+  const loadAppSettings = useAppSettings((state) => state.load);
   const bottom = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void loadAppSettings();
+  }, [loadAppSettings]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
@@ -72,7 +80,9 @@ function Conversation({ projectId, chatId }: { projectId: string; chatId: string
             </div>
           )}
           <ChatIdContext.Provider value={chatId}>
-            <Rows timeline={timeline} parentToolUseId={null} hidden={hidden} />
+            <MessageTimeContext.Provider value={timestampFormat}>
+              <Rows timeline={timeline} parentToolUseId={null} hidden={hidden} />
+            </MessageTimeContext.Provider>
           </ChatIdContext.Provider>
           {timeline.draft && !hidden.has('thinking') && timeline.draft.thinking && (
             <div className="border-l-2 border-line pl-3 text-muted whitespace-pre-wrap">{timeline.draft.thinking}</div>
