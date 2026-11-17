@@ -95,6 +95,7 @@ impl Sidecar {
         }
         let node = std::env::var_os("CUCICODE_NODE").unwrap_or_else(|| "node".into());
         let mut command = Command::new(node);
+        command.env_clear().envs(crate::system_env::current());
         command
             .arg(&script)
             .stdin(Stdio::piped())

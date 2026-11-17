@@ -95,6 +95,7 @@ async fn run_one(dir: &Path, command_line: &str) -> CheckResult {
         command.args(["-c", command_line]);
         command
     };
+    command.env_clear().envs(crate::system_env::current());
     command.current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     #[cfg(windows)]
     {

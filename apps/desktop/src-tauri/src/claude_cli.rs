@@ -11,6 +11,7 @@ use crate::error::{AppError, AppResult};
 fn run(args: &[&str], cwd: Option<&Path>) -> AppResult<String> {
     let program = std::env::var_os("CUCICODE_CLAUDE").unwrap_or_else(|| "claude".into());
     let mut command = Command::new(program);
+    command.env_clear().envs(crate::system_env::current());
     command.args(args).stdin(Stdio::null());
     if let Some(cwd) = cwd {
         command.current_dir(cwd);

@@ -94,6 +94,10 @@ impl Terminals {
         }
         let pair = native_pty_system().openpty(size(cols, rows)).map_err(|error| invalid(format!("cannot open a terminal: {error}")))?;
         let mut shell = default_shell();
+        shell.env_clear();
+        for (name, value) in crate::system_env::current() {
+            shell.env(name, value);
+        }
         shell.cwd(cwd);
         shell.env("TERM", "xterm-256color");
         let child = pair.slave.spawn_command(shell).map_err(|error| invalid(format!("cannot start the shell: {error}")))?;

@@ -12,6 +12,7 @@ mod scaffold;
 mod secrets;
 mod settings;
 mod sidecar;
+mod system_env;
 mod stories;
 mod toolkit;
 mod usage;
@@ -48,8 +49,13 @@ async fn sidecar_request(sidecar: State<'_, Sidecar>, method: String, params: Op
     let mut params = params.unwrap_or(Value::Null);
     if method == "chat.open" {
         if let Some(object) = params.as_object_mut() {
-            let secrets = blocking(|| Ok(secrets::environment())).await?;
-            object.insert("env".into(), serde_json::json!(secrets));
+            let environment = blocking(|| {
+                let mut environment: std::collections::HashMap<String, String> = system_env::current().into_iter().collect();
+                environment.extend(secrets::environment());
+                Ok(environment)
+            })
+            .await?;
+            object.insert("env".into(), serde_json::json!(environment));
         }
     }
     sidecar.request(&method, params).await
