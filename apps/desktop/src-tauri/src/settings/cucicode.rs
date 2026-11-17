@@ -10,6 +10,7 @@ use crate::paths::{claude_config_dir, CUCICODE_DIR};
 
 pub const SETTINGS_VERSION: u64 = 1;
 const LOCAL_IGNORE_ENTRY: &str = ".claude/cucicode/*.local.json";
+const RESERVED_USER_KEYS: [&str; 3] = ["version", "projects", "secretNames"];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,6 +81,23 @@ pub fn effective_setting(settings: &ProjectSettings, path: &[&str]) -> Option<Va
         Some(current.clone())
     };
     lookup(&settings.local).or_else(|| lookup(&settings.shared))
+}
+
+/// Returns the app-wide sections of the user-level file, leaving out the keys owned by other modules.
+pub fn read_user_settings(path: &Path) -> AppResult<Map<String, Value>> {
+    let mut document = load_document(path)?;
+    document.retain(|key, _| !RESERVED_USER_KEYS.contains(&key.as_str()));
+    Ok(document)
+}
+
+/// Writes one app-wide section into the user-level file, reloading it first so every other key stays as stored.
+pub fn set_user_setting(path: &Path, key: &str, value: Value) -> AppResult<()> {
+    if key.is_empty() || RESERVED_USER_KEYS.contains(&key) {
+        return Err(AppError::Invalid(format!("\"{key}\" cannot be written as an app setting")));
+    }
+    let mut document = load_document(path)?;
+    document.insert(key.to_owned(), value);
+    save_document(path, document)
 }
 
 pub fn read_pipeline_state(project_path: &Path) -> AppResult<Value> {
@@ -225,6 +243,52 @@ mod tests {
         assert_eq!(read_pipeline_state(&project).unwrap()["features"]["auth"]["stage"], json!("plan"));
         assert!(write_pipeline_state(&project, json!([1, 2])).is_err());
         fs::remove_dir_all(&project).unwrap();
+    }
+
+    #[test]
+    fn user_settings_of_a_missing_file_are_empty() {
+        let dir = temp_project("user-missing");
+        assert!(read_user_settings(&dir.join("settings.json")).unwrap().is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn user_setting_round_trips_and_keeps_other_keys() {
+        let dir = temp_project("user-roundtrip");
+        let path = dir.join("settings.json");
+        fs::write(&path, r#"{"version":1,"projects":[{"id":"a"}],"secretNames":["TOKEN"],"other":1}"#).unwrap();
+        set_user_setting(&path, "chat", json!({ "timestamps": { "show": false } })).unwrap();
+        let settings = read_user_settings(&path).unwrap();
+        assert_eq!(settings["chat"]["timestamps"]["show"], json!(false));
+        assert_eq!(settings["other"], json!(1));
+        assert!(!settings.contains_key("projects"));
+        let document = load_document(&path).unwrap();
+        assert_eq!(document["projects"], json!([{ "id": "a" }]));
+        assert_eq!(document["secretNames"], json!(["TOKEN"]));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn user_setting_refuses_reserved_keys_without_touching_the_file() {
+        let dir = temp_project("user-reserved");
+        let path = dir.join("settings.json");
+        let original = r#"{"version":1,"projects":[],"secretNames":[]}"#;
+        fs::write(&path, original).unwrap();
+        for key in RESERVED_USER_KEYS {
+            assert!(set_user_setting(&path, key, json!(2)).is_err());
+        }
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn user_settings_reject_a_file_from_a_newer_version() {
+        let dir = temp_project("user-newer");
+        let path = dir.join("settings.json");
+        fs::write(&path, r#"{"version":99}"#).unwrap();
+        assert!(read_user_settings(&path).is_err());
+        assert!(set_user_setting(&path, "chat", json!({})).is_err());
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
