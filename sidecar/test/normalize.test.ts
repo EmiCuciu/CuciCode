@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyTool, flattenToolResult, MAX_RESULT_CHARS, normalizeMessage } from '../src/normalize.ts';
+import { classifyTool, flattenToolResult, MAX_RESULT_CHARS, normalizeMessage, recordedAt } from '../src/normalize.ts';
 import { buildAgentEnv } from '../src/env.ts';
 import { AsyncQueue } from '../src/asyncQueue.ts';
 
@@ -15,6 +15,31 @@ describe('classifyTool', () => {
       mcp: { server: 'github', tool: 'create_issue' },
     });
     expect(classifyTool('Bash', { command: 'ls' })).toEqual({ category: 'tool' });
+  });
+});
+
+describe('recordedAt', () => {
+  it('returns the transcript timestamp as epoch milliseconds', () => {
+    expect(recordedAt({ timestamp: '2025-03-12T07:30:00.000Z' })).toBe(Date.UTC(2025, 2, 12, 7, 30));
+  });
+
+  it('returns null when the timestamp is missing, not a string or invalid', () => {
+    expect(recordedAt({})).toBeNull();
+    expect(recordedAt(null)).toBeNull();
+    expect(recordedAt({ timestamp: 1741764600000 })).toBeNull();
+    expect(recordedAt({ timestamp: 'not a date' })).toBeNull();
+  });
+
+  it('stamps history events through a per-message context', () => {
+    const message = {
+      type: 'user',
+      uuid: 'u1',
+      parent_tool_use_id: null,
+      timestamp: '2025-03-12T07:30:00.000Z',
+      message: { content: 'hi' },
+    };
+    const events = normalizeMessage(message, { source: 'history', now: () => recordedAt(message) });
+    expect(events[0]).toMatchObject({ kind: 'user_message', ts: Date.UTC(2025, 2, 12, 7, 30) });
   });
 });
 
