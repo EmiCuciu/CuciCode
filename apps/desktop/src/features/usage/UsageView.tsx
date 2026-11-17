@@ -30,7 +30,7 @@ const RANGES = [
 type RangeId = (typeof RANGES)[number]['id'];
 
 const time = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-const dayTime = (ms: number): string => new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const dayTime = (ms: number): string => new Date(ms).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 function outlookText(result: Outlook, long: boolean): string {
   const when = long ? dayTime : time;
