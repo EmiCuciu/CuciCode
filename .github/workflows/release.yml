@@ -33,4 +33,3 @@ jobs:
           releaseName: CuciCode ${{ github.ref_name }}
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
