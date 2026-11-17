@@ -52,11 +52,18 @@
   "version": 1,
   "budget": {
     "maxTurnsPerTask": 0,
-    "warnAtPercent": 75,
+    "warnAtPercent": 80,
     "downgrade": {
-      "enabled": false,
-      "atPercent": 90,
+      "enabled": true,
+      "atPercent": 75,
       "model": "haiku"
+    }
+  },
+  "codeRules": {
+    "enforce": {
+      "secrets": false,
+      "envValues": true,
+      "envIgnored": true
     }
   }
 }

@@ -18,6 +18,10 @@ describe('new project form', () => {
     expect(joinPath('/home/me', 'shop')).toBe('/home/me/shop');
   });
 
+  it('offers a Java starter', () => {
+    expect(summary({ ...defaultForm('/x'), name: 'api', template: 'java' })).toContain('Add Java starter files: Maven pom.xml, one service class and a JUnit 5 test');
+  });
+
   it('summarises every chosen step in order, and only those', () => {
     const lines = summary({ ...defaultForm('/home/me'), name: 'shop', template: 'node', remote: 'github', sharedPlugins: ['fmt@team'] });
     expect(lines[0]).toBe('Create /home/me/shop');

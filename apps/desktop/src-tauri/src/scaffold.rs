@@ -15,6 +15,7 @@ pub enum Template {
     Node,
     Python,
     Rust,
+    Java,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -61,6 +62,7 @@ pub fn gitignore(template: Template) -> String {
         Template::Node => "\n# Build output\nnode_modules/\ndist/\ncoverage/\n",
         Template::Python => "\n# Build output\n__pycache__/\n*.py[cod]\n.venv/\nbuild/\ndist/\n*.egg-info/\n.pytest_cache/\n",
         Template::Rust => "\n# Build output\ntarget/\n",
+        Template::Java => "\n# Build output\ntarget/\n*.class\n",
         Template::Empty => "\n# Build output\nbuild/\ndist/\nout/\n",
     };
     format!("{GITIGNORE_BASE}{build}")
@@ -71,14 +73,16 @@ fn test_command(template: Template) -> &'static str {
         Template::Node => "npm test",
         Template::Python => "pytest",
         Template::Rust => "cargo test",
+        Template::Java => "mvn -q test",
         Template::Empty => "(none yet)",
     }
 }
 
 /// Starter files for each stack, kept to the minimum that runs its own test command.
-pub fn template_files(template: Template, name: &str) -> Vec<(&'static str, String)> {
+pub fn template_files(template: Template, name: &str) -> Vec<(String, String)> {
     let crate_name = name.replace(['-', '.'], "_").to_lowercase();
-    match template {
+    let files: Vec<(&'static str, String)> = match template {
+        Template::Java => return java_files(name),
         Template::Empty => vec![],
         Template::Node => vec![
             ("package.json", serde_json::to_string_pretty(&json!({ "name": name.to_lowercase(), "version": "0.1.0", "private": true, "type": "module", "scripts": { "test": "node --test" } })).unwrap_or_default() + "\n"),
@@ -94,7 +98,89 @@ pub fn template_files(template: Template, name: &str) -> Vec<(&'static str, Stri
             ("Cargo.toml", format!("[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")),
             ("src/main.rs", "fn hello(name: &str) -> String {\n    format!(\"Hello, {name}!\")\n}\n\nfn main() {\n    println!(\"{}\", hello(\"world\"));\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn greets_by_name() {\n        assert_eq!(super::hello(\"Ann\"), \"Hello, Ann!\");\n    }\n}\n".into()),
         ],
+    };
+    files.into_iter().map(|(path, content)| (path.to_owned(), content)).collect()
+}
+
+/// A Java package segment from a project name: lowercase letters and digits, never starting with a digit.
+pub fn java_package(name: &str) -> String {
+    let cleaned: String = name.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase();
+    if cleaned.chars().next().is_none_or(|first| first.is_ascii_digit()) {
+        format!("app{cleaned}")
+    } else {
+        cleaned
     }
+}
+
+const JAVA_POM: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example</groupId>
+  <artifactId>__ARTIFACT__</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>6.1.3</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.6.1</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+"#;
+
+const JAVA_SERVICE: &str = r#"package com.example.__PACKAGE__;
+
+/**
+ * Builds the greetings the application shows to people.
+ */
+public class GreetingService {
+
+    public String greet(String name) {
+        return "Hello, " + name + "!";
+    }
+}
+"#;
+
+const JAVA_TEST: &str = r#"package com.example.__PACKAGE__;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.Test;
+
+class GreetingServiceTest {
+
+    @Test
+    void greetsByName() {
+        assertEquals("Hello, Ann!", new GreetingService().greet("Ann"));
+    }
+}
+"#;
+
+fn java_files(name: &str) -> Vec<(String, String)> {
+    let package = java_package(name);
+    vec![
+        ("pom.xml".to_owned(), JAVA_POM.replace("__ARTIFACT__", &name.to_lowercase())),
+        (format!("src/main/java/com/example/{package}/GreetingService.java"), JAVA_SERVICE.replace("__PACKAGE__", &package)),
+        (format!("src/test/java/com/example/{package}/GreetingServiceTest.java"), JAVA_TEST.replace("__PACKAGE__", &package)),
+    ]
 }
 
 pub fn claude_md(name: &str, template: Template) -> String {
@@ -102,6 +188,7 @@ pub fn claude_md(name: &str, template: Template) -> String {
         Template::Node => "Node.js (ES modules), tests with node:test",
         Template::Python => "Python 3, tests with pytest",
         Template::Rust => "Rust, tests with cargo test",
+        Template::Java => "Java 21 with Maven, tests with JUnit 5",
         Template::Empty => "not chosen yet",
     };
     format!(
@@ -268,6 +355,33 @@ mod tests {
         let output = std::process::Command::new("node").arg("--test").current_dir(&root).output().expect("run node");
         fs::remove_dir_all(parent).unwrap();
         assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    }
+
+    #[test]
+    fn java_packages_are_valid_identifiers() {
+        assert_eq!(java_package("my-app"), "myapp");
+        assert_eq!(java_package("Shop.Web"), "shopweb");
+        assert_eq!(java_package("9lives"), "app9lives");
+        assert_eq!(java_package("-"), "app");
+    }
+
+    #[test]
+    fn scaffolds_a_java_project_whose_tests_pass_with_maven() {
+        let parent = temp("java");
+        let (root, results) = scaffold(&ScaffoldSpec { git_init: false, ..spec(&parent, "order-api", Template::Java) }).unwrap();
+        assert!(results.iter().all(|result| result.ok), "{results:?}");
+        for file in ["pom.xml", "src/main/java/com/example/orderapi/GreetingService.java", "src/test/java/com/example/orderapi/GreetingServiceTest.java"] {
+            assert!(root.join(file).is_file(), "{file} missing");
+        }
+        assert!(fs::read_to_string(root.join("pom.xml")).unwrap().contains("<artifactId>order-api</artifactId>"));
+        assert!(fs::read_to_string(root.join(".gitignore")).unwrap().contains("target/"));
+        assert!(fs::read_to_string(root.join("CLAUDE.md")).unwrap().contains("mvn -q test"));
+        let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
+        match std::process::Command::new(maven).args(["-q", "test"]).current_dir(&root).output() {
+            Ok(output) => assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout)),
+            Err(error) => eprintln!("skipping the Maven run: {error}"),
+        }
+        fs::remove_dir_all(parent).unwrap();
     }
 
     #[test]

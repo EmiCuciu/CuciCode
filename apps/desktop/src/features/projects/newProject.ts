@@ -1,4 +1,4 @@
-export type Template = 'empty' | 'node' | 'python' | 'rust';
+export type Template = 'empty' | 'node' | 'python' | 'rust' | 'java';
 export type RemoteHost = 'none' | 'github' | 'bitbucket';
 
 export interface NewProjectForm {
@@ -23,6 +23,7 @@ export const TEMPLATES: { id: Template; label: string; note: string }[] = [
   { id: 'node', label: 'Node.js', note: 'package.json, one module and a node:test test' },
   { id: 'python', label: 'Python', note: 'pyproject.toml, one module and a pytest test' },
   { id: 'rust', label: 'Rust', note: 'Cargo.toml and a main.rs with a test' },
+  { id: 'java', label: 'Java', note: 'Maven pom.xml, one service class and a JUnit 5 test' },
 ];
 
 export function defaultForm(parent: string): NewProjectForm {
