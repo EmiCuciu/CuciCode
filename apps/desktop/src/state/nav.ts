@@ -4,7 +4,9 @@ export type RailSection = 'projects' | 'activity' | 'toolkit' | 'usage' | 'conce
 
 interface NavState {
   section: RailSection;
+  creatingProject: boolean;
   go: (section: RailSection) => void;
+  setCreatingProject: (value: boolean) => void;
 }
 
 const SECTIONS: readonly RailSection[] = ['projects', 'activity', 'toolkit', 'usage', 'concepts', 'settings'];
@@ -17,5 +19,7 @@ function initialSection(): RailSection {
 
 export const useNav = create<NavState>((set) => ({
   section: initialSection(),
+  creatingProject: false,
+  setCreatingProject: (creatingProject) => set({ creatingProject, section: 'projects' }),
   go: (section) => set({ section }),
 }));

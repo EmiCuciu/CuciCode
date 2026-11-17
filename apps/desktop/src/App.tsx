@@ -7,6 +7,7 @@ import { TopBar } from './features/layout/TopBar.tsx';
 import { ProjectsSidebar } from './features/projects/ProjectsSidebar.tsx';
 import { SettingsView } from './features/settings/SettingsView.tsx';
 import { ToolkitView } from './features/toolkit/ToolkitView.tsx';
+import { NewProjectWizard } from './features/projects/NewProjectWizard.tsx';
 import { UsageView } from './features/usage/UsageView.tsx';
 import { ConceptsView } from './features/learn/ConceptsView.tsx';
 import { ActivityView } from './features/activity/ActivityView.tsx';
@@ -26,6 +27,7 @@ function storedTheme(): Theme {
 export function App() {
   const section = useNav((state) => state.section);
   const setSection = useNav((state) => state.go);
+  const creatingProject = useNav((state) => state.creatingProject);
   const [theme, setTheme] = useState<Theme>(storedTheme);
   const activeId = useApp((state) => state.activeProjectId);
   const project = useApp((state) => state.projects.find((item) => item.id === state.activeProjectId) ?? null);
@@ -85,13 +87,15 @@ export function App() {
         {section === 'projects' && (
           <>
             <ProjectsSidebar />
-            {activeId ? (
+            {creatingProject ? (
+              <NewProjectWizard onClose={() => useNav.getState().setCreatingProject(false)} />
+            ) : activeId ? (
               <>
                 <ChatView projectId={activeId} />
                 <Inspector projectId={activeId} />
               </>
             ) : (
-              <div className="flex flex-1 items-center justify-center text-muted">Add or select a project.</div>
+              <div className="flex flex-1 items-center justify-center text-muted">Add a folder with +, create a project with New, or select one.</div>
             )}
           </>
         )}

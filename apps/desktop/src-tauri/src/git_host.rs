@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
@@ -153,8 +153,79 @@ pub fn open_pull_request(project: &Path, story_id: &str, title: &str, descriptio
     Ok(OpenedPullRequest { url, branch, base })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NewRepoHost {
+    GitHub,
+    Bitbucket,
+}
+
+/// The API request that creates an empty private repository, and the clone URL to push to.
+pub fn create_repo_call(host: NewRepoHost, owner: &str, name: &str) -> (PullRequestCall, String) {
+    match host {
+        NewRepoHost::GitHub => {
+            let (url, body) = if owner.trim().is_empty() {
+                ("https://api.github.com/user/repos".to_owned(), json!({ "name": name, "private": true }))
+            } else {
+                (format!("https://api.github.com/orgs/{owner}/repos"), json!({ "name": name, "private": true }))
+            };
+            let clone_owner = if owner.trim().is_empty() { "{login}" } else { owner };
+            (PullRequestCall { url, body, token_name: GITHUB_TOKEN, accept: "application/vnd.github+json" }, format!("https://github.com/{clone_owner}/{name}.git"))
+        }
+        NewRepoHost::Bitbucket => (
+            PullRequestCall {
+                url: format!("https://api.bitbucket.org/2.0/repositories/{owner}/{}", name.to_lowercase()),
+                body: json!({ "scm": "git", "is_private": true }),
+                token_name: BITBUCKET_TOKEN,
+                accept: "application/json",
+            },
+            format!("https://bitbucket.org/{owner}/{}.git", name.to_lowercase()),
+        ),
+    }
+}
+
+/// The https clone URL from either host's "repository created" response.
+pub fn clone_url(response: &Value) -> Option<String> {
+    response.get("clone_url").and_then(Value::as_str).map(str::to_owned).or_else(|| {
+        response.pointer("/links/clone").and_then(Value::as_array)?.iter().find(|link| link.get("name").and_then(Value::as_str) == Some("https")).and_then(|link| link.get("href")).and_then(Value::as_str).map(|href| match href.split_once('@') {
+            Some((_, rest)) => format!("https://{rest}"),
+            None => href.to_owned(),
+        })
+    })
+}
+
+/// Creates a private repository on the host, adds it as `origin` and pushes the current branch.
+pub fn create_remote(project: &Path, host: NewRepoHost, owner: &str, name: &str) -> AppResult<String> {
+    if owner.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')) || (host == NewRepoHost::Bitbucket && owner.trim().is_empty()) {
+        return Err(invalid("enter the GitHub organisation (or leave it empty for your own account), or the Bitbucket workspace"));
+    }
+    let (call, fallback) = create_repo_call(host, owner.trim(), name);
+    let token = secrets::get(call.token_name)?.ok_or_else(|| invalid("no access token is stored for this host; add one in Settings → Workflow → Git"))?;
+    let response = post(&call, &token)?;
+    let url = clone_url(&response).unwrap_or(fallback);
+    git(project, &["remote", "add", "origin", &url])?;
+    let branch = base_branch(project)?;
+    git(project, &["push", "-u", "origin", &branch])?;
+    Ok(url)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn builds_repository_creation_requests_and_reads_the_clone_url() {
+        let (github, _) = create_repo_call(NewRepoHost::GitHub, "", "shop");
+        assert_eq!(github.url, "https://api.github.com/user/repos");
+        assert_eq!(github.body, json!({ "name": "shop", "private": true }));
+        assert_eq!(create_repo_call(NewRepoHost::GitHub, "acme", "shop").0.url, "https://api.github.com/orgs/acme/repos");
+        let (bitbucket, fallback) = create_repo_call(NewRepoHost::Bitbucket, "team", "Shop");
+        assert_eq!(bitbucket.url, "https://api.bitbucket.org/2.0/repositories/team/shop");
+        assert_eq!(fallback, "https://bitbucket.org/team/shop.git");
+        assert_eq!(clone_url(&json!({ "clone_url": "https://github.com/me/shop.git" })).as_deref(), Some("https://github.com/me/shop.git"));
+        let links = json!({ "links": { "clone": [{ "name": "ssh", "href": "git@bitbucket.org:team/shop.git" }, { "name": "https", "href": "https://me@bitbucket.org/team/shop.git" }] } });
+        assert_eq!(clone_url(&links).as_deref(), Some("https://bitbucket.org/team/shop.git"));
+        assert_eq!(clone_url(&json!({})), None);
+    }
+
     use super::*;
 
     fn remote(url: &str) -> Remote {

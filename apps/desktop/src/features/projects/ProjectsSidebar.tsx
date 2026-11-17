@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNav } from '../../state/nav.ts';
 import { useApp } from '../../state/store.ts';
 
 function relativeTime(epochMs: number | null): string {
@@ -39,6 +40,9 @@ export function ProjectsSidebar() {
         />
         <button type="button" title="Add an existing folder" className="rounded border border-line px-2 text-muted hover:text-fg" onClick={() => void add()}>
           +
+        </button>
+        <button type="button" title="Create a new project" className="rounded border border-line px-2 text-muted hover:text-fg" onClick={() => useNav.getState().setCreatingProject(true)}>
+          New
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">

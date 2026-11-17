@@ -8,6 +8,7 @@ mod jsonfile;
 mod paths;
 mod projects;
 mod pty;
+mod scaffold;
 mod secrets;
 mod settings;
 mod sidecar;
@@ -367,6 +368,23 @@ fn pty_close(terminals: State<'_, pty::Terminals>, id: String) {
     terminals.close(&id);
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScaffoldResult {
+    path: PathBuf,
+    steps: Vec<scaffold::StepResult>,
+}
+
+#[tauri::command]
+async fn project_scaffold(spec: scaffold::ScaffoldSpec) -> AppResult<ScaffoldResult> {
+    blocking(move || scaffold::scaffold(&spec).map(|(path, steps)| ScaffoldResult { path, steps })).await
+}
+
+#[tauri::command]
+async fn project_create_remote(project_path: PathBuf, host: git_host::NewRepoHost, owner: String, name: String) -> AppResult<String> {
+    blocking(move || git_host::create_remote(&project_path, host, &owner, &name)).await
+}
+
 #[tauri::command]
 async fn usage_report(since_ms: u64) -> AppResult<UsageReport> {
     blocking(move || {
@@ -542,6 +560,8 @@ pub fn run() {
             checks_commands,
             checks_run,
             usage_report,
+            project_scaffold,
+            project_create_remote,
             pty_open,
             pty_write,
             pty_resize,
