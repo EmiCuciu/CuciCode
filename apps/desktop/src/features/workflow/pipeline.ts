@@ -51,6 +51,7 @@ export type Effect =
 export type PipelineEvent =
   | { type: 'start'; feature: string; idea: string; skipBrainstorm: boolean }
   | { type: 'start_onboard' }
+  | { type: 'start_build'; feature: string; stories: { id: string; dependsOn: string[] }[] }
   | { type: 'advance' }
   | { type: 'main_turn_done' }
   | { type: 'main_turn_failed'; error: string }
@@ -231,6 +232,13 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       const fresh: FeatureRun = { ...newRun(), feature: featureSlug(event.feature), idea: event.idea.trim() };
       return enterStage(fresh, event.skipBrainstorm ? 'plan' : 'brainstorm', config);
     }
+    case 'start_build': {
+      if (event.stories.length === 0) {
+        return none;
+      }
+      const stories = Object.fromEntries(event.stories.map((story) => [story.id, { id: story.id, dependsOn: story.dependsOn, stage: 'queued' as StoryStage, fixRounds: 0, awaiting: null, note: null }]));
+      return enterStage(log({ ...newRun(), feature: event.feature, idea: 'Build the existing stories', stories }, `Building ${event.stories.length} existing stories.`), 'build', config);
+    }
     case 'start_onboard':
       return enterStage({ ...newRun(), kind: 'onboard', feature: 'onboarding', idea: 'Bring this existing project into the workflow' }, 'map', config);
     case 'advance':
@@ -385,6 +393,18 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       return schedule(log(setStory(run, event.storyId, { stage: 'queued', fixRounds: 0, note: null }), `${event.storyId}: queued again.`), config);
     }
   }
+}
+
+/** Stories on disk that are not archived or done, grouped by feature, for starting a build without re-planning. */
+export function buildableFeatures(stories: { id: string; feature: string; status: string; archived: boolean; dependsOn: string[] }[]): { feature: string; stories: { id: string; dependsOn: string[] }[] }[] {
+  const groups = new Map<string, { id: string; dependsOn: string[] }[]>();
+  for (const story of stories) {
+    if (story.archived || story.status === 'done' || story.feature.length === 0) {
+      continue;
+    }
+    groups.set(story.feature, [...(groups.get(story.feature) ?? []), { id: story.id, dependsOn: story.dependsOn }]);
+  }
+  return [...groups.entries()].map(([feature, list]) => ({ feature, stories: list.sort((left, right) => left.id.localeCompare(right.id)) }));
 }
 
 /** What is waiting for the user in a run, for the Inbox. */

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FEATURE_STAGES, ONBOARD_INFO, ONBOARD_STAGES, type FeatureRun, type OnboardStage, type StoryRun, type StoryStage } from './pipeline.ts';
+import { buildableFeatures, FEATURE_STAGES, ONBOARD_INFO, ONBOARD_STAGES, type FeatureRun, type OnboardStage, type StoryRun, type StoryStage } from './pipeline.ts';
 import { useWorkflow } from './workflowStore.ts';
 
 const STAGE_TONE: Record<StoryStage, string> = {
@@ -19,6 +19,8 @@ const primary = 'rounded bg-accent/20 px-2 py-0.5 text-accent hover:bg-accent/30
 
 function StartForm({ projectId }: { projectId: string }) {
   const dispatch = useWorkflow((state) => state.dispatch);
+  const allStories = useWorkflow((state) => state.projects[projectId]?.stories);
+  const pending = buildableFeatures(allStories ?? []);
   const [feature, setFeature] = useState('');
   const [idea, setIdea] = useState('');
   const [skip, setSkip] = useState(false);
@@ -35,6 +37,22 @@ function StartForm({ projectId }: { projectId: string }) {
       <button type="button" disabled={!ready} className={primary} onClick={() => void dispatch(projectId, { type: 'start', feature, idea, skipBrainstorm: skip })}>
         Start feature
       </button>
+      {pending.length > 0 && (
+        <div className="mt-2 border-t border-line/60 pt-2 text-[11px] text-muted">
+          Stories already written and not built yet:
+          {pending.map((group) => (
+            <button
+              key={group.feature}
+              type="button"
+              className={`${button} mt-1 block text-left text-fg`}
+              title={group.stories.map((story) => story.id).join(', ')}
+              onClick={() => void dispatch(projectId, { type: 'start_build', feature: group.feature, stories: group.stories })}
+            >
+              Build {group.stories.length} {group.stories.length === 1 ? 'story' : 'stories'} of {group.feature}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mt-2 border-t border-line/60 pt-2 text-[11px] text-muted">
         Existing codebase that was not started with CuciCode? Map it first, one reviewed stage at a time.
         <button type="button" className={`${button} mt-1 block text-fg`} onClick={() => void dispatch(projectId, { type: 'start_onboard' })}>

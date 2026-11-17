@@ -337,3 +337,26 @@ describe('budget guardrails', () => {
     expect(resolved.budget).toEqual({ maxTurnsPerTask: 0, warnAtPercent: 100, downgrade: { enabled: true, atPercent: 90, model: 'haiku' } });
   });
 });
+
+describe('building stories that already exist', () => {
+  it('starts straight at the build stage with dependency order and the parallel limit', async () => {
+    const { buildableFeatures } = await import('./pipeline.ts');
+    const files = [
+      { id: 'S-002', feature: 'users', status: 'todo', archived: false, dependsOn: ['S-001'] },
+      { id: 'S-001', feature: 'users', status: 'todo', archived: false, dependsOn: [] },
+      { id: 'S-000', feature: 'users', status: 'done', archived: true, dependsOn: [] },
+      { id: 'S-009', feature: 'other', status: 'review', archived: false, dependsOn: [] },
+    ];
+    const groups = buildableFeatures(files);
+    expect(groups).toEqual([
+      { feature: 'users', stories: [{ id: 'S-001', dependsOn: [] }, { id: 'S-002', dependsOn: ['S-001'] }] },
+      { feature: 'other', stories: [{ id: 'S-009', dependsOn: [] }] },
+    ]);
+    const result = step(newRun(), { type: 'start_build', feature: 'users', stories: groups[0]?.stories ?? [] }, config());
+    expect(result.run).toMatchObject({ stage: 'build', status: 'working', feature: 'users' });
+    expect(result.run.stories['S-001']?.stage).toBe('building');
+    expect(result.run.stories['S-002']?.stage).toBe('queued');
+    expect(result.effects).toEqual([{ type: 'start_worker', storyId: 'S-001', prompt: '/cucicode:build S-001' }]);
+    expect(step(newRun(), { type: 'start_build', feature: 'x', stories: [] }, config()).effects).toEqual([]);
+  });
+});

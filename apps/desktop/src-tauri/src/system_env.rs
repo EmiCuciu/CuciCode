@@ -8,6 +8,9 @@ pub struct Saved {
     pub expand: bool,
 }
 
+/// cmd.exe ignores a PATH longer than 8191 characters, so every command run through it would fail.
+const MAX_PATH_CHARS: usize = 8000;
+
 fn path_key(name: &str) -> bool {
     name.eq_ignore_ascii_case("PATH")
 }
@@ -63,10 +66,15 @@ pub fn merge(inherited: &[(String, String)], machine: &[Saved], user: &[Saved]) 
     }
     if !saved_path.is_empty() {
         let mut entries: Vec<String> = Vec::new();
-        for entry in saved_path.into_iter().chain(split_path(&inherited_path)) {
-            if !entries.iter().any(|existing| existing.eq_ignore_ascii_case(&entry)) {
-                entries.push(entry);
+        let mut length = 0;
+        let saved_count = saved_path.len();
+        for (index, entry) in saved_path.into_iter().chain(split_path(&inherited_path)).enumerate() {
+            let inherited = index >= saved_count;
+            if entries.iter().any(|existing| existing.eq_ignore_ascii_case(&entry)) || (inherited && length + entry.len() + 1 > MAX_PATH_CHARS) {
+                continue;
             }
+            length += entry.len() + 1;
+            entries.push(entry);
         }
         let name = known.get("PATH").map_or_else(|| "Path".to_owned(), |(name, _)| name.clone());
         known.insert("PATH".into(), (name, entries.join(";")));
@@ -140,6 +148,16 @@ mod tests {
         let merged = merge(&inherited, &[saved("Path", r"C:\Windows;C:\Windows\System32", true)], &[saved("Path", r"C:\Maven\bin;%USERPROFILE%\jdk\bin", true)]);
         assert_eq!(get(&merged, "PATH"), r"C:\Windows;C:\Windows\System32;C:\Maven\bin;C:\Users\me\jdk\bin;C:\repo\node_modules\.bin");
         assert_eq!(merged.iter().filter(|(key, _)| key.eq_ignore_ascii_case("PATH")).count(), 1);
+    }
+
+    #[test]
+    fn a_bloated_inherited_path_is_cut_so_cmd_can_still_use_it() {
+        let inherited_path = (0..400).map(|index| format!(r"C:\inherited\tool-{index:04}\bin")).collect::<Vec<_>>().join(";");
+        let inherited = vec![("Path".to_owned(), inherited_path)];
+        let merged = merge(&inherited, &[saved("Path", r"C:\Windows", false)], &[saved("Path", r"C:\Maven\bin", false)]);
+        let path = get(&merged, "PATH");
+        assert!(path.len() <= MAX_PATH_CHARS, "{}", path.len());
+        assert!(path.starts_with(r"C:\Windows;C:\Maven\bin;C:\inherited\tool-0000\bin"));
     }
 
     #[test]
