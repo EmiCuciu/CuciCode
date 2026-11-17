@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { pluginApi, secretsApi, toolkitApi, workflowApi, type GitHostInfo } from '../../bridge/tauri.ts';
 import type { Project, ToolkitItem } from '../../bridge/types.ts';
 import { setFrontmatterField } from '../toolkit/frontmatterEdit.ts';
+import { CodeRulesCard } from './CodeRulesCard.tsx';
 import { APPROVAL_STAGES, ROLE_INFO, ROLES, sourceOf, type ApprovalStage, type Role, type WorkflowConfig } from './config.ts';
 import { useWorkflow } from './workflowStore.ts';
 
@@ -422,6 +423,8 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
           </button>
         </div>
       </Card>
+
+      <CodeRulesCard projectPath={project.path} enforce={config.codeRules.enforce} onEnforce={(enforce) => save('codeRules', { enforce })} />
 
       <Card title="Budget guardrails" note="Limits that protect your usage window. The parallel limit is under Git above.">
         <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2">

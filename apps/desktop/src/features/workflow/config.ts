@@ -29,6 +29,7 @@ export interface WorkflowConfig {
     warnAtPercent: number;
     downgrade: { enabled: boolean; atPercent: number; model: string };
   };
+  codeRules: { enforce: { secrets: boolean; envValues: boolean; envIgnored: boolean } };
 }
 
 export const ROLE_INFO: Record<Role, { label: string; job: string; defaultAgent: string }> = {
@@ -69,6 +70,7 @@ export function defaultConfig(): WorkflowConfig {
     checks: { commands: [] },
     stories: { target: 'folder', folder: 'Stories' },
     budget: { maxTurnsPerTask: 0, warnAtPercent: 80, downgrade: { enabled: false, atPercent: 90, model: 'haiku' } },
+    codeRules: { enforce: { secrets: true, envValues: true, envIgnored: true } },
   };
 }
 
@@ -110,6 +112,7 @@ function applyLayer(base: WorkflowConfig, layer: Dict | undefined): WorkflowConf
   const stories = pick(layer, 'stories');
   const budget = pick(layer, 'budget');
   const downgrade = pick(budget, 'downgrade');
+  const enforce = pick(pick(layer, 'codeRules'), 'enforce');
   return {
     pipeline: {
       approvals: Object.fromEntries(APPROVAL_STAGES.map((stage) => [stage, bool(approvals?.[stage], base.pipeline.approvals[stage])])) as Record<ApprovalStage, boolean>,
@@ -141,6 +144,13 @@ function applyLayer(base: WorkflowConfig, layer: Dict | undefined): WorkflowConf
         enabled: bool(downgrade?.enabled, base.budget.downgrade.enabled),
         atPercent: int(downgrade?.atPercent, base.budget.downgrade.atPercent, 1, 100),
         model: text(downgrade?.model, base.budget.downgrade.model) || base.budget.downgrade.model,
+      },
+    },
+    codeRules: {
+      enforce: {
+        secrets: bool(enforce?.secrets, base.codeRules.enforce.secrets),
+        envValues: bool(enforce?.envValues, base.codeRules.enforce.envValues),
+        envIgnored: bool(enforce?.envIgnored, base.codeRules.enforce.envIgnored),
       },
     },
   };

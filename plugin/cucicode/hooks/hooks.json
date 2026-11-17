@@ -1,5 +1,5 @@
 {
-  "description": "Blocks edits to paths the project marks as protected in .claude/cucicode/settings.json (git.protectedPaths).",
+  "description": "Enforces the project's protected paths and Code Rules (no secrets in source, no env values inlined in code, .env files must be ignored by git). Each check is configured in .claude/cucicode/settings.json.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,11 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/protect-paths.mjs\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/code-rules.mjs\"",
             "timeout": 10
           }
         ]
