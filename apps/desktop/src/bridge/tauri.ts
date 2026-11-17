@@ -228,4 +228,7 @@ export const settingsApi = {
   getProjectUi: (projectPath: string): Promise<ProjectUiSettings> => invoke('cucicode_project_ui_get', { projectPath }),
   setProjectUi: (projectPath: string, settings: ProjectUiSettings): Promise<void> =>
     invoke('cucicode_project_ui_set', { projectPath, settings }),
+  getUser: (): Promise<Record<string, unknown>> => invoke('cucicode_user_settings_get'),
+  setUser: (key: string, value: unknown): Promise<void> =>
+    invoke('cucicode_user_settings_set', { key, value: value ?? null }),
 };
