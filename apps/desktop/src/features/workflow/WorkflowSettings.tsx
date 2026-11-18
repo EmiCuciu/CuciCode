@@ -5,7 +5,7 @@ import { setFrontmatterField } from '../toolkit/frontmatterEdit.ts';
 import { CodeRulesCard } from './CodeRulesCard.tsx';
 import { effectiveDefault } from '../defaults/effectiveDefaults.ts';
 import { useResolvedSettings } from '../defaults/useDefaults.ts';
-import { APPROVAL_STAGES, defaultConfig, ROLE_INFO, ROLES, sourceOf, type ApprovalStage, type Role, type WorkflowConfig } from './config.ts';
+import { APPROVAL_STAGES, defaultConfig, ROLE_INFO, ROLES, sourceOf, WORKER_PERMISSION_MODES, type ApprovalStage, type Role, type WorkerPermissionMode, type WorkflowConfig } from './config.ts';
 import { useWorkflow } from './workflowStore.ts';
 
 const PLUGIN_ID = 'cucicode@cucicode';
@@ -14,6 +14,13 @@ const APPROVAL_LABEL: Record<ApprovalStage, string> = {
   stories: 'After stories are written, before building',
   checks: 'After checks pass, before review',
   review: 'After review, before merging',
+};
+const WORKER_MODE_LABEL: Record<WorkerPermissionMode, string> = {
+  acceptEdits: 'Accept edits: file edits are automatic, other tools ask',
+  auto: 'Auto: a classifier approves safe actions and blocks risky ones',
+  dontAsk: 'Don\'t ask: only the allowed tools run, everything else is denied',
+  bypassPermissions: 'Bypass: everything runs without asking (use in a trusted project only)',
+  default: 'Default: ask for every action not already allowed',
 };
 const input = 'rounded border border-line bg-bg px-2 py-1 outline-none focus:border-accent';
 const DEF = defaultConfig();
@@ -327,6 +334,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
   const [agents, setAgents] = useState<ToolkitItem[]>([]);
   const [paths, setPaths] = useState('');
   const [commands, setCommands] = useState('');
+  const [tools, setTools] = useState('');
   const projectId = project?.id ?? null;
   const scanPath = project?.path ?? null;
   const rescan = useCallback(async (): Promise<void> => {
@@ -353,6 +361,7 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
     if (config) {
       setPaths(config.git.protectedPaths.join('\n'));
       setCommands(config.checks.commands.join('\n'));
+      setTools(config.workers.allowedTools.join('\n'));
     }
   }, [config]);
 
@@ -397,6 +406,30 @@ export function WorkflowSettings({ project }: { project: Project | null }) {
       </Card>
 
       <RoutingCard config={config} agents={agents} projectPath={project.path} rescan={rescan} source={from('routing', 'mode')} save={(routing) => save('routing', routing)} />
+
+      <Card title="Worker agents" note="How the agents the pipeline starts for each story ask for permission. Applies to workers and their reviewers when a story's session starts.">
+        <div className="grid grid-cols-[220px_1fr_auto] items-center gap-x-3 gap-y-2">
+          <span>Permission mode</span>
+          <select className={input} value={config.workers.permissionMode} onChange={(event) => save('workers', { ...config.workers, permissionMode: event.target.value })}>
+            {WORKER_PERMISSION_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {WORKER_MODE_LABEL[mode]}
+              </option>
+            ))}
+          </select>
+          <Source value={from('workers', 'permissionMode')} of={DEF.workers.permissionMode} />
+        </div>
+        <div className="mt-3">
+          <div>
+            Always allowed tools <Source value={from('workers', 'allowedTools')} of="none" />
+          </div>
+          <p className="text-muted">One permission rule per line, for example Bash(npm run build:*). Added to the check commands and git commands that workers may already run.</p>
+          <textarea rows={3} className={`${input} w-full font-mono text-[12px]`} value={tools} onChange={(event) => setTools(event.target.value)} />
+          <button type="button" className="mt-1 rounded border border-line px-2 py-0.5 hover:bg-raised" onClick={() => save('workers', { ...config.workers, allowedTools: lines(tools) })}>
+            Save allowed tools
+          </button>
+        </div>
+      </Card>
 
       <Card title="Checks" note="Run by CuciCode in the story's worktree after the worker finishes. Reviewers start only when all of them pass.">
         <div className="mb-1 text-muted">

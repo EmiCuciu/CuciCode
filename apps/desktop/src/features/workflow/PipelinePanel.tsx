@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { buildableFeatures, FEATURE_STAGES, ONBOARD_INFO, ONBOARD_STAGES, type FeatureRun, type OnboardStage, type StoryRun, type StoryStage } from './pipeline.ts';
+import { buildableFeatures, canResume, resumeStage, FEATURE_STAGES, ONBOARD_INFO, ONBOARD_STAGES, type FeatureRun, type OnboardStage, type StoryRun, type StoryStage } from './pipeline.ts';
 import { useWorkflow } from './workflowStore.ts';
 
 const STAGE_TONE: Record<StoryStage, string> = {
@@ -120,8 +120,13 @@ function StoryRow({ projectId, story, title }: { projectId: string; story: Story
               <RejectBox label="Request changes" onReject={(reason) => void dispatch(projectId, { type: 'reject', storyId: story.id, reason })} />
             </>
           )}
+          {canResume(story) && (
+            <button type="button" className={primary} title={`Continue from ${resumeStage(story)}; finished work is kept`} onClick={() => void dispatch(projectId, { type: 'resume', storyId: story.id })}>
+              Resume
+            </button>
+          )}
           {story.stage === 'failed' && (
-            <button type="button" className={button} onClick={() => void dispatch(projectId, { type: 'retry', storyId: story.id })}>
+            <button type="button" className={button} title="Start the story again from the beginning" onClick={() => void dispatch(projectId, { type: 'retry', storyId: story.id })}>
               Retry
             </button>
           )}

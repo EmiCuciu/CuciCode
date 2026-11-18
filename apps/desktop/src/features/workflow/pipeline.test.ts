@@ -186,6 +186,33 @@ describe('story flow', () => {
     expect(types(retried.effects)).toEqual(['start_worker']);
   });
 
+  it('resumes a failed merge without running the build, checks or review again', () => {
+    const cfg = config();
+    const merging = step(play([{ type: 'worker_turn_done', storyId: 'S-001', text: '' }, { type: 'checks_done', storyId: 'S-001', passed: true, output: '' }, { type: 'worker_turn_done', storyId: 'S-001', text: 'RESULT: approved' }], cfg, toBuild(cfg)).run, { type: 'approve', storyId: 'S-001' }, cfg);
+    expect(merging.run.stories['S-001']?.stage).toBe('merging');
+    const failed = step(merging.run, { type: 'merge_failed', storyId: 'S-001', error: 'the main working tree has uncommitted changes' }, cfg);
+    expect(failed.run.stories['S-001']).toMatchObject({ stage: 'failed', failedAt: 'merging' });
+    const resumed = step(failed.run, { type: 'resume', storyId: 'S-001' }, cfg);
+    expect(resumed.run.stories['S-001']).toMatchObject({ stage: 'merging', failedAt: null, note: null });
+    expect(types(resumed.effects)).toEqual(['merge']);
+  });
+
+  it('resumes an interrupted worker turn in the same session, and a failed review or checks at that step', () => {
+    const cfg = config();
+    const stopped = step(toBuild(cfg), { type: 'worker_failed', storyId: 'S-001', error: 'the worker turn stopped' }, cfg);
+    const worker = step(stopped.run, { type: 'resume', storyId: 'S-001' }, cfg);
+    expect(worker.run.stories['S-001']?.stage).toBe('building');
+    expect(types(worker.effects)).toEqual(['send_worker']);
+    const checking = step(toBuild(cfg), { type: 'worker_turn_done', storyId: 'S-001', text: '' }, cfg).run;
+    const checksFailed = step(checking, { type: 'worker_failed', storyId: 'S-001', error: 'checks could not run' }, cfg);
+    expect(types(step(checksFailed.run, { type: 'resume', storyId: 'S-001' }, cfg).effects)).toEqual(['run_checks']);
+    const reviewing = play([{ type: 'worker_turn_done', storyId: 'S-001', text: '' }, { type: 'checks_done', storyId: 'S-001', passed: true, output: '' }], cfg, toBuild(cfg)).run;
+    const reviewFailed = step(reviewing, { type: 'worker_failed', storyId: 'S-001', error: 'the worker turn stopped' }, cfg);
+    const reviewResumed = step(reviewFailed.run, { type: 'resume', storyId: 'S-001' }, cfg);
+    expect(reviewResumed.run.stories['S-001']?.stage).toBe('review');
+    expect(step(reviewResumed.run, { type: 'resume', storyId: 'S-001' }, cfg).effects).toEqual([]);
+  });
+
   it('can pause after checks, and a rejected merge goes back to the worker with the reason', () => {
     const cfg = config((value) => {
       value.pipeline.approvals.checks = true;
@@ -381,6 +408,18 @@ describe('review verdicts that arrive after the turn ended', () => {
     const built = step(toBuild(cfg), { type: 'worker_turn_done', storyId: 'S-001', text: '' }, cfg).run;
     return step(built, { type: 'checks_done', storyId: 'S-001', passed: true, output: '' }, cfg).run;
   };
+
+  it('picks up a fix typed in the chat after the story stopped at the fix limit, and reviews it again', () => {
+    const cfg = config();
+    const inReview = play([{ type: 'worker_turn_done', storyId: 'S-001', text: '' }, { type: 'checks_done', storyId: 'S-001', passed: true, output: '' }], cfg, toBuild(cfg)).run;
+    const limited = step({ ...inReview, stories: { ...inReview.stories, 'S-001': { ...inReview.stories['S-001']!, fixRounds: 2 } } }, { type: 'worker_turn_done', storyId: 'S-001', text: 'RESULT: changes_requested' }, cfg);
+    expect(limited.run.stories['S-001']?.stage).toBe('failed');
+    const manual = step(limited.run, { type: 'worker_turn_done', storyId: 'S-001', text: 'RESULT: fixed' }, cfg);
+    expect(manual.run.stories['S-001']).toMatchObject({ stage: 'checks', fixRounds: 1, note: null });
+    expect(types(manual.effects)).toEqual(['run_checks']);
+    const reviewed = step(manual.run, { type: 'checks_done', storyId: 'S-001', passed: true, output: '' }, cfg);
+    expect(reviewed.run.stories['S-001']?.stage).toBe('review');
+  });
 
   it('applies a late approved verdict to a story that failed for lack of one', () => {
     const cfg = config();

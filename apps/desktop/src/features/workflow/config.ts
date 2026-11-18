@@ -30,7 +30,11 @@ export interface WorkflowConfig {
     downgrade: { enabled: boolean; atPercent: number; model: string };
   };
   codeRules: { enforce: { secrets: boolean; envValues: boolean; envIgnored: boolean } };
+  workers: { permissionMode: WorkerPermissionMode; allowedTools: string[] };
 }
+
+export const WORKER_PERMISSION_MODES = ['acceptEdits', 'auto', 'dontAsk', 'bypassPermissions', 'default'] as const;
+export type WorkerPermissionMode = (typeof WORKER_PERMISSION_MODES)[number];
 
 export const ROLE_INFO: Record<Role, { label: string; job: string; defaultAgent: string }> = {
   main: { label: 'Main thread', job: 'Conversation and orchestration', defaultAgent: '' },
@@ -71,6 +75,7 @@ export function defaultConfig(): WorkflowConfig {
     stories: { target: 'folder', folder: 'Stories' },
     budget: { maxTurnsPerTask: 0, warnAtPercent: 80, downgrade: { enabled: false, atPercent: 90, model: 'haiku' } },
     codeRules: { enforce: { secrets: true, envValues: true, envIgnored: true } },
+    workers: { permissionMode: 'acceptEdits', allowedTools: [] },
   };
 }
 
@@ -113,6 +118,7 @@ function applyLayer(base: WorkflowConfig, layer: Dict | undefined): WorkflowConf
   const budget = pick(layer, 'budget');
   const downgrade = pick(budget, 'downgrade');
   const enforce = pick(pick(layer, 'codeRules'), 'enforce');
+  const workers = pick(layer, 'workers');
   return {
     pipeline: {
       approvals: Object.fromEntries(APPROVAL_STAGES.map((stage) => [stage, bool(approvals?.[stage], base.pipeline.approvals[stage])])) as Record<ApprovalStage, boolean>,
@@ -152,6 +158,10 @@ function applyLayer(base: WorkflowConfig, layer: Dict | undefined): WorkflowConf
         envValues: bool(enforce?.envValues, base.codeRules.enforce.envValues),
         envIgnored: bool(enforce?.envIgnored, base.codeRules.enforce.envIgnored),
       },
+    },
+    workers: {
+      permissionMode: oneOf(workers?.permissionMode, WORKER_PERMISSION_MODES, base.workers.permissionMode),
+      allowedTools: strings(workers?.allowedTools, base.workers.allowedTools),
     },
   };
 }

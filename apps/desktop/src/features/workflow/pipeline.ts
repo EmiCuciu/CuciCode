@@ -24,7 +24,10 @@ export interface StoryRun {
   awaiting: 'checks' | 'review' | null;
   /** What sent the story back to the worker last, so a fix can be followed by the right next step. */
   note: string | null;
+  failedAt?: ResumableStage | null;
 }
+
+export type ResumableStage = 'building' | 'fixing' | 'checks' | 'review' | 'merging';
 
 export interface FeatureRun {
   /** `feature` builds something new; `onboard` brings an existing project into the workflow. */
@@ -65,7 +68,8 @@ export type PipelineEvent =
   | { type: 'checks_done'; storyId: string; passed: boolean; output: string }
   | { type: 'merged'; storyId: string }
   | { type: 'merge_failed'; storyId: string; error: string }
-  | { type: 'retry'; storyId: string };
+  | { type: 'retry'; storyId: string }
+  | { type: 'resume'; storyId: string };
 
 export interface StepResult {
   run: FeatureRun;
@@ -73,6 +77,36 @@ export interface StepResult {
 }
 
 const ACTIVE: ReadonlySet<StoryStage> = new Set(['building', 'checks', 'fixing', 'review', 'merging']);
+
+const RESUME_WORKER_PROMPT = 'Your previous turn was interrupted. Continue where you stopped: finish the work for this story, run the checks and commit.';
+
+function resumableStage(stage: StoryStage | undefined): ResumableStage | null {
+  return stage !== undefined && ACTIVE.has(stage) ? (stage as ResumableStage) : null;
+}
+
+export function resumeStage(story: StoryRun): ResumableStage | null {
+  if (story.stage !== 'failed') {
+    return null;
+  }
+  if (story.failedAt) {
+    return story.failedAt;
+  }
+  const note = story.note ?? '';
+  if (note === NO_VERDICT) {
+    return 'review';
+  }
+  if (/merge|working tree|conflict/i.test(note)) {
+    return 'merging';
+  }
+  if (/worker turn stopped|usage limit/i.test(note)) {
+    return story.fixRounds > 0 ? 'fixing' : 'building';
+  }
+  return null;
+}
+
+export function canResume(story: StoryRun): boolean {
+  return resumeStage(story) !== null;
+}
 
 const WORKER_GIT_COMMANDS = ['git status', 'git diff', 'git log', 'git show', 'git add', 'git commit'];
 
@@ -354,6 +388,14 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         }
         return none;
       }
+      if (story.stage === 'failed') {
+        const allowedRounds = Math.min(story.fixRounds, Math.max(0, config.pipeline.maxFixRounds - 1));
+        const adopted = setStory(run, story.id, { stage: 'checks', fixRounds: allowedRounds, awaiting: null, note: null, failedAt: null });
+        return {
+          run: { ...log(adopted, `${story.id}: your work in the chat was picked up; running checks.`), status: 'working' },
+          effects: [{ type: 'run_checks', storyId: story.id }],
+        };
+      }
       if (story.stage === 'building' || story.stage === 'fixing') {
         return { run: log(setStory(run, story.id, { stage: 'checks' }), `${story.id}: running checks.`), effects: [{ type: 'run_checks', storyId: story.id }] };
       }
@@ -365,7 +407,7 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         if (result === 'changes_requested') {
           return sendBack(run, story.id, config, `The review requested changes. Fix the blocking findings below.\n\n${event.text}`, 'review requested changes');
         }
-        const failed = log(setStory(run, story.id, { stage: 'failed', note: NO_VERDICT }), `${story.id}: the review gave no verdict.`);
+        const failed = log(setStory(run, story.id, { stage: 'failed', note: NO_VERDICT, failedAt: 'review' }), `${story.id}: the review gave no verdict.`);
         const scheduled = schedule(failed, config);
         return { run: scheduled.run, effects: [...scheduled.effects, { type: 'notify', text: `${story.id} needs you: the review gave no verdict` }] };
       }
@@ -397,9 +439,28 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
       if (!run.stories[event.storyId]) {
         return none;
       }
-      const failed = log(setStory(run, event.storyId, { stage: 'failed', awaiting: null, note: event.error }), `${event.storyId}: ${event.error}`);
+      const failedAt = resumableStage(run.stories[event.storyId]?.stage);
+      const failed = log(setStory(run, event.storyId, { stage: 'failed', awaiting: null, note: event.error, failedAt }), `${event.storyId}: ${event.error}`);
       const scheduled = schedule(failed, config);
       return { run: scheduled.run, effects: [...scheduled.effects, { type: 'notify', text: `${event.storyId} needs you: ${event.error}` }] };
+    }
+    case 'resume': {
+      const stopped = run.stories[event.storyId];
+      const stage = stopped ? resumeStage(stopped) : null;
+      if (!stopped || stage === null) {
+        return none;
+      }
+      const base = { ...log(setStory(run, stopped.id, { stage, note: null, failedAt: null }), `${stopped.id}: resumed at ${stage}.`), status: 'working' as const };
+      switch (stage) {
+        case 'merging':
+          return { run: base, effects: [{ type: 'merge', storyId: stopped.id }] };
+        case 'checks':
+          return { run: base, effects: [{ type: 'run_checks', storyId: stopped.id }] };
+        case 'review':
+          return startReview(base, stopped.id, config);
+        default:
+          return { run: base, effects: [{ type: 'send_worker', storyId: stopped.id, prompt: RESUME_WORKER_PROMPT }] };
+      }
     }
     case 'retry': {
       const failed = run.stories[event.storyId];
@@ -407,9 +468,9 @@ export function step(run: FeatureRun, event: PipelineEvent, config: WorkflowConf
         return none;
       }
       if (failed.note === NO_VERDICT) {
-        return startReview({ ...log(setStory(run, failed.id, { note: null }), `${failed.id}: review started again.`), status: 'working' }, failed.id, config);
+        return startReview({ ...log(setStory(run, failed.id, { note: null, failedAt: null }), `${failed.id}: review started again.`), status: 'working' }, failed.id, config);
       }
-      return schedule(log(setStory(run, event.storyId, { stage: 'queued', fixRounds: 0, note: null }), `${event.storyId}: queued again.`), config);
+      return schedule(log(setStory(run, event.storyId, { stage: 'queued', fixRounds: 0, note: null, failedAt: null }), `${event.storyId}: queued again.`), config);
     }
   }
 }

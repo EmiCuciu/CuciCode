@@ -116,14 +116,15 @@ export const useWorkflow = create<WorkflowState>((set, get) => {
     if (route.downgraded && useApp.getState().chats[chatId]?.model !== route.model) {
       patch(projectId, { notices: [...(current(projectId)?.notices ?? []), { ts: Date.now(), text: `${storyId}: the 5-hour window is at ${Math.round(limits?.fiveHour?.utilization ?? 0)}%, so the worker runs on ${route.model}` }] });
     }
+    const workers = (workflow?.config ?? defaultConfig()).workers;
     useApp.getState().configureChat(chatId, {
       cwd: worktree.path,
       model: route.model,
       effort: route.effort as Effort | undefined,
       maxTurns: route.maxTurns,
-      permissionMode: 'acceptEdits',
+      permissionMode: workers.permissionMode,
       lean: true,
-      allowedTools: workerAllowedTools(workflow?.checkCommands ?? []),
+      allowedTools: [...workerAllowedTools(workflow?.checkCommands ?? []), ...workers.allowedTools],
     });
     return chatId;
   };
