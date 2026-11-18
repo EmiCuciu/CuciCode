@@ -68,6 +68,18 @@ export function protectedPatterns(projectDir) {
   return patterns;
 }
 
+/** "block" (default) refuses writes to protected paths; "ask" lets the user approve each one in the permission prompt. */
+export function protectedMode(projectDir) {
+  let mode = 'block';
+  for (const name of ['settings.json', 'settings.local.json']) {
+    const value = readJson(join(projectDir, '.claude', 'cucicode', name))?.git?.protectedPathsMode;
+    if (value === 'ask' || value === 'block') {
+      mode = value;
+    }
+  }
+  return mode;
+}
+
 /** The path a tool wants to change, relative to the project, or null when it is outside the project. */
 export function relativeTarget(projectDir, cwd, target) {
   const absolute = isAbsolute(target) ? target : resolve(cwd, target);
