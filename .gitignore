@@ -14,3 +14,5 @@ apps/desktop/src-tauri/binaries/
 .claude/cucicode/settings.local.json
 .claude/cucicode/*.local.json
 apps/desktop/src-tauri/resources/
+Benchmarks/
+TODO.md
