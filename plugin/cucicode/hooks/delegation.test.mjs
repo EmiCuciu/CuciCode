@@ -35,7 +35,7 @@ test('the shipped rule asks first, delegates to workers and keeps the heavy role
     assert.ok(additionalContext.includes(role), role);
   }
   assert.ok(additionalContext.includes('unless the user asks for them'));
-  assert.ok(additionalContext.includes('initialize one with an initial commit'));
+  assert.ok(additionalContext.includes('git init -b main'));
 });
 
 test('the entry script prints the context as JSON and exits cleanly', () => {
