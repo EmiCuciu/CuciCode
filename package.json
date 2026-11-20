@@ -17,6 +17,6 @@
     "build:sidecar": "npm run build --workspace sidecar",
     "build:app": "npm run tauri build --workspace apps/desktop",
     "dev":"npm run tauri dev --workspace apps/desktop",
-    "test:plugin": "node --test plugin/cucicode/hooks/paths.test.mjs plugin/cucicode/hooks/rules.test.mjs plugin/cucicode/hooks/commands.test.mjs plugin/cucicode/hooks/delegation.test.mjs"
+    "test:plugin": "node --test plugin/cucicode/hooks/paths.test.mjs plugin/cucicode/hooks/rules.test.mjs plugin/cucicode/hooks/commands.test.mjs plugin/cucicode/hooks/delegation.test.mjs plugin/cucicode/hooks/frontmatter.test.mjs"
   }
 }

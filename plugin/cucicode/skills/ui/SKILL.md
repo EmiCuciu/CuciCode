@@ -1,5 +1,5 @@
 ---
-description: Design a user interface change before building it: screens, states, components and accessibility. Use before a story that touches UI.
+description: Design a user interface change before building it, covering screens, states, components and accessibility. Use before a story that touches UI.
 argument-hint: <screen or feature>
 disable-model-invocation: true
 ---

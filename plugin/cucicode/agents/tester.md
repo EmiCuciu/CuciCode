@@ -1,6 +1,6 @@
 ---
 name: tester
-description: Designs and runs tests for complex or risky changes: edge cases, integration and end-to-end paths, regressions. Use after a story's own checks pass and the change is complex, or when coverage of a risky area is thin.
+description: Designs and runs tests for complex or risky changes, covering edge cases, integration and end-to-end paths, and regressions. Use after a story's own checks pass and the change is complex, or when coverage of a risky area is thin.
 tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 model: sonnet
 maxTurns: 30
