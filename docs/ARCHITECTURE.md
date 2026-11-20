@@ -151,7 +151,7 @@ In the UI (`features/toolkit`), pure logic is kept apart from components and uni
 |---|---|
 | `agents/` | `planner` (Opus, high effort), `story-writer`, `explorer` (Haiku, read-only), `worker`, and reviewers for logic, security, UI and code rules |
 | `skills/` | One per stage: `brainstorm`, `plan`, `stories`, `build`, `fix`, `review`, `onboard` (map, baseline, scope, audit, backlog for existing projects) |
-| `hooks/` | `protect-paths.mjs`: a `PreToolUse` hook that blocks edits to paths listed under `git.protectedPaths` in `.claude/cucicode/settings.json` |
+| `hooks/` | `protect-paths.mjs`: a `PreToolUse` hook that blocks edits to paths listed under `git.protectedPaths` in `.claude/cucicode/settings.json`. `inject-delegation.mjs`: a `SessionStart` hook that adds `rules/delegation.md` to the main session's context, so a plain chat request is routed to the CuciCode agents |
 
 **In the app:**
 

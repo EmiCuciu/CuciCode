@@ -12,3 +12,4 @@
 - Pin dependency versions through the lockfile; add a dependency only when it is used.
 - Docker: pinned base image tags, non-root user, multi-stage builds, `.dockerignore`, no secrets in layers, a health check.
 - Commits start with the story id and are focused on one change.
+- When working in a project that has no git repo yet, initialize one (git init plus an initial commit) before writing code, so the branch and worktree rules can be followed.

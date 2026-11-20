@@ -1,6 +1,17 @@
 {
-  "description": "Enforces the project's protected paths and Code Rules (no secrets in source, no env values inlined in code, .env files must be ignored by git) and blocks destructive shell commands. Each check is configured in .claude/cucicode/settings.json.",
+  "description": "Tells the main session to delegate feature work to the CuciCode agents. Enforces the project's protected paths and Code Rules (no secrets in source, no env values inlined in code, .env files must be ignored by git) and blocks destructive shell commands. Each check is configured in .claude/cucicode/settings.json.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/inject-delegation.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
