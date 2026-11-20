@@ -27,11 +27,14 @@ test('a missing rule file is an error the entry script can swallow', () => {
   assert.throws(() => delegationContext(join(tmpdir(), 'cucicode-no-such-plugin')));
 });
 
-test('the shipped rule names every role it delegates to', () => {
+test('the shipped rule asks first, delegates to workers and keeps the heavy roles opt-in', () => {
   const { additionalContext } = delegationContext(pluginRoot).hookSpecificOutput;
-  for (const role of ['cucicode:planner', 'cucicode:story-writer', 'cucicode:worker', 'cucicode:tester', 'cucicode:reviewer-*']) {
+  assert.ok(additionalContext.includes('at most three short questions'));
+  assert.ok(additionalContext.includes('delegate each to cucicode:worker'));
+  for (const role of ['cucicode:planner', 'cucicode:story-writer', 'cucicode:tester', 'cucicode:reviewer-*']) {
     assert.ok(additionalContext.includes(role), role);
   }
+  assert.ok(additionalContext.includes('unless the user asks for them'));
   assert.ok(additionalContext.includes('initialize one with an initial commit'));
 });
 

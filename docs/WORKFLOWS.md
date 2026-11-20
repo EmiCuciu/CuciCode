@@ -25,7 +25,7 @@ The plugin contains:
 | Agent | `cucicode:reviewer-logic`, `-security`, `-ui`, `-code-rules` | Review a story's diff and end with `RESULT: approved` or `RESULT: changes_requested` | Sonnet |
 | Skill | `/cucicode:brainstorm` `/cucicode:plan` `/cucicode:stories` `/cucicode:build` `/cucicode:fix` `/cucicode:review` `/cucicode:onboard` | One per pipeline stage | — |
 | Hook | `protect-paths.mjs`, `code-rules.mjs` | Block edits to protected paths, secrets in code, `.env` values copied into code, unignored `.env` files | — |
-| Hook | `inject-delegation.mjs` | On every session start, tells the main session to delegate feature work to the agents above instead of writing code itself (text in `rules/delegation.md`) | — |
+| Hook | `inject-delegation.mjs` | On every session start, tells the main session to ask a few short questions and then hand feature work to `cucicode:worker` agents instead of writing code itself; planner, story-writer, tester and reviewers stay opt-in (text in `rules/delegation.md`) | — |
 
 Because the stages are ordinary skills, the whole workflow also runs in a plain terminal (`claude` then `/cucicode:plan …`). The app adds sequencing, approvals, parallel worktrees, checks, diffs and the Inbox.
 
