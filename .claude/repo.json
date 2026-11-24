@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "refreshed_at": "4cfef02",
+  "branches": {
+    "base": "main",
+    "protected": [
+      "main"
+    ],
+    "environments": {
+      "production": "main"
+    },
+    "hotfix_base": "main",
+    "naming": {
+      "ticket": "feature/NEX-{ticket}-{slug}",
+      "no_ticket": "chore/{slug}"
+    }
+  },
+  "components": [
+    {
+      "id": "CuciCode-desktop",
+      "kind": "frontend",
+      "stack": "react",
+      "path": "apps/desktop",
+      "commands": {
+        "build": "npm run build",
+        "test": "npx vitest run"
+      }
+    },
+    {
+      "id": "CuciCode-protocol",
+      "kind": "other",
+      "stack": "node",
+      "path": "packages/protocol",
+      "commands": {}
+    },
+    {
+      "id": "CuciCode-sidecar",
+      "kind": "other",
+      "stack": "node",
+      "path": "sidecar",
+      "commands": {
+        "build": "npm run build",
+        "test": "npx vitest run"
+      }
+    }
+  ]
+}
